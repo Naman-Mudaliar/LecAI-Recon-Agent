@@ -9,6 +9,8 @@ venv/
 # old attempts, kept locally for reference, never committed
 _archive_v1/
 
-# downloaded gtfs data - big files, regenerable, dont belong in git
+# downloaded/derived gtfs data - regenerable from the two real sources,
+# dont belong in git (and the raw region file is huge anyway)
 data/nw_gtfs.zip
 data/nw_gtfs/
+data/*.json
