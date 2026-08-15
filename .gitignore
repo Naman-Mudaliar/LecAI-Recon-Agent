@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+.env
+.claude/
+
+# old attempts, kept locally for reference, never committed
+_archive_v1/
+
+# downloaded gtfs data - big files, regenerable, dont belong in git
+data/nw_gtfs.zip
+data/nw_gtfs/
