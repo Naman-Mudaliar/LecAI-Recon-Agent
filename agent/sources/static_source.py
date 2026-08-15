@@ -185,6 +185,10 @@ def _stream_stop_times_for_trips(trip_ids):
                 "stop_sequence": int(fields[idx["stop_sequence"]]),
                 "arrival_time": fields[idx["arrival_time"]],
                 "departure_time": fields[idx["departure_time"]],
+                # timepoint=1 means the operator actually commits to this
+                # time, 0 means its interpolated/not a real timing point.
+                # matters a lot for skip detection - see agent/fields.py
+                "timepoint": fields[idx["timepoint"]] == "1",
             })
 
     for trip_id in by_trip:

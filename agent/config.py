@@ -83,3 +83,48 @@ STOP_MATCH_LOOKAHEAD = 8
 # only consider the next 8 scheduled stops after our last confirmed match.
 # keeps the search cheap and stops a single bad gps ping from jumping the
 # match miles down the route.
+
+# --- field 1/2: timing -----------------------------------------------------
+
+MIN_DELAY_SECONDS_TO_LOG = 60
+# per the brief: "subject to a defined minimum-delay threshold below
+# which its not worth logging as a conflict at all". a minute felt like
+# the right floor - our own detection timestamp is exact to the second
+# but its still a single position ping, not a precise operator
+# measurement, so treating anything under a minute as noise rather than
+# a real conflict seems fair.
+
+# --- field 3: per-stop adherence --------------------------------------------
+
+# only timepoint stops count for skip detection (see agent/fields.py) -
+# checked route 263 directly: a real 49-stop trip only has 7 timepoints.
+# checking all 49 against a ~15 min poll cycle would flag basically every
+# cycle as "skipped a bunch of stops", which is just normal service, not
+# an anomaly.
+
+# --- field 4: trip level adherence -----------------------------------------
+
+# nothing extra needed here yet - uses calendar.txt + calendar_dates.txt
+# directly, see agent/fields.py
+
+# --- field 5: direction ------------------------------------------------
+
+MIN_DISPLACEMENT_METERS_FOR_BEARING = 80
+# below this, two consecutive gps pings are too close together to trust
+# the bearing between them - normal gps drift is often 10-50m on its own,
+# so a bus that's barely moved (stuck in traffic, stopped at lights) would
+# give a basically random bearing if we didn't skip the check here.
+
+MAX_BEARING_DIFFERENCE_DEGREES = 90
+# if the vehicles actual direction of travel is more than 90 degrees off
+# from what its assigned trip expects, thats not "slightly off due to a
+# bendy road", thats probably heading the wrong way entirely - a genuine
+# vehicle-to-trip matching fault.
+
+# --- field 6: start time/date -----------------------------------------------
+
+MAX_START_TIME_DRIFT_SECONDS = 300
+# how far live's reported start_time can differ from the trip's first
+# scheduled stop time before we call it a mismatch rather than just
+# normal early/late departure. 5 minutes, same rough ballpark as the
+# official dft "on time" punctuality window for buses.

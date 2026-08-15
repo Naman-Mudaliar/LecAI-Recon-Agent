@@ -37,6 +37,26 @@ def haversine_meters(lat1, lon1, lat2, lon2):
     return 2 * r * math.asin(math.sqrt(a))
 
 
+def bearing_degrees(lat1, lon1, lat2, lon2):
+    """compass bearing (0-360, 0=north) from point 1 to point 2. used for
+    field 5 - since the live feed never gives us direction_id (checked,
+    0 out of 759 vehicles had it), we work out which way the bus is
+    actually pointed by comparing two of its own positions instead."""
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dl = math.radians(lon2 - lon1)
+    x = math.sin(dl) * math.cos(p2)
+    y = math.cos(p1) * math.sin(p2) - math.sin(p1) * math.cos(p2) * math.cos(dl)
+    theta = math.atan2(x, y)
+    return (math.degrees(theta) + 360) % 360
+
+
+def bearing_difference(b1, b2):
+    """smallest angle between two bearings, 0-180. cant just subtract
+    since bearings wrap around at 360/0."""
+    diff = abs(b1 - b2) % 360
+    return min(diff, 360 - diff)
+
+
 def match_vehicle_to_stop(trip_stops, live_lat, live_lon, last_matched_sequence=-1):
     """trip_stops is the ordered stop list for one trip (from the static
     schedule). returns the matched stop dict plus the distance to it in
