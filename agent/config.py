@@ -128,3 +128,28 @@ MAX_START_TIME_DRIFT_SECONDS = 300
 # scheduled stop time before we call it a mismatch rather than just
 # normal early/late departure. 5 minutes, same rough ballpark as the
 # official dft "on time" punctuality window for buses.
+
+# --- phase 4: the actual policy --------------------------------------------
+
+CHRONIC_CONFLICT_STREAK_THRESHOLD = 3
+# how many consecutive cycles a field has to stay in conflict before we
+# stop auto-resolving it and freeze it instead. at the brief's own ~15
+# min polling cadence thats about 45 min of continuous disagreement -
+# picked 3 over 2 because real bus delays genuinely flip back and forth
+# cycle to cycle (catches up a bit, falls behind again), so 2 felt too
+# quick to trigger on normal noise.
+
+CANCELLATION_GRACE_PERIOD_SECONDS = 1200  # 20 min
+# how long past a trip's scheduled start we wait, having never seen it
+# live even once, before calling it cancelled rather than just running
+# late. 20 min is well past the dft "on time" window (+6 min), so a trip
+# that still hasn't shown up by then is very likely not coming at all.
+
+CANCELLATION_MAX_LOOKBACK_SECONDS = 7200  # 2 hours
+# the other half of the window - dont check trips that started MORE than
+# 2h ago either. without this, a trip that ran and finished normally 12
+# hours before we ever started running this script would show up as
+# "never seen, therefore cancelled" forever, since we genuinely have no
+# data either way for anything before we started watching. this bounds
+# the check to "recently due and unaccounted for", not "the whole day's
+# backlog".

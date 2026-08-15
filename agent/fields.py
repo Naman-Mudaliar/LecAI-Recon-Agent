@@ -9,6 +9,11 @@ each check returns a dict shaped like:
 disagreement is None when there just isnt an observation to compare this
 cycle (e.g. the bus wasnt near any stop) - thats not "they agree", its
 "nothing to say yet", and those two things shouldn't get mixed up.
+
+check_vehicle() returns a dict, not just the six results - it also hands
+back matched_stop and last_matched_stop_sequence, since callers (like
+run.py) want that for showing the actual nearby schedule, not just the
+pass/fail verdicts.
 """
 
 from datetime import datetime
@@ -45,7 +50,12 @@ def check_vehicle(vehicle, trip, calendar, calendar_dates, state):
         state.update_trip_last_matched(vehicle["trip_id"], new_last_matched)
     state.update_vehicle_position(vehicle["vehicle_id"], vehicle["lat"], vehicle["lon"], vehicle["timestamp"])
 
-    return results
+    return {
+        "field_results": results,
+        "matched_stop": matched_stop,
+        "matched_this_cycle": matched_stop is not None,
+        "last_matched_stop_sequence": new_last_matched,
+    }
 
 
 def check_arrival_timing(vehicle, matched_stop):
@@ -126,7 +136,7 @@ def check_trip_level_adherence(vehicle, calendar, calendar_dates, service_id):
     no valid service today) - catching genuine cancellations needs
     tracking which scheduled trips never showed up all day, which belongs
     at the ledger level (phase 4), not in a single-cycle check."""
-    service_today = _service_runs_on(calendar, calendar_dates, service_id, vehicle["start_date"])
+    service_today = service_runs_on(calendar, calendar_dates, service_id, vehicle["start_date"])
 
     if not service_today:
         return {
@@ -199,7 +209,7 @@ def check_start_time_date(vehicle, trip, calendar, calendar_dates, service_id):
     reported_start_epoch = time_utils.gtfs_time_to_epoch(vehicle["start_date"], vehicle["start_time"])
     drift = reported_start_epoch - expected_start_epoch
 
-    service_today = _service_runs_on(calendar, calendar_dates, service_id, vehicle["start_date"])
+    service_today = service_runs_on(calendar, calendar_dates, service_id, vehicle["start_date"])
 
     disagreement = abs(drift) > config.MAX_START_TIME_DRIFT_SECONDS or not service_today
     detail = f"start time drift {drift:+d}s"
@@ -225,7 +235,7 @@ def _no_observation(field_name):
     }
 
 
-def _service_runs_on(calendar, calendar_dates, service_id, date_str):
+def service_runs_on(calendar, calendar_dates, service_id, date_str):
     """does this service_id actually run on this date - checks the
     one-off exceptions first, then falls back to the normal weekday
     pattern."""

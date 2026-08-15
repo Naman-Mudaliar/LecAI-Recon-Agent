@@ -14,3 +14,7 @@ _archive_v1/
 data/nw_gtfs.zip
 data/nw_gtfs/
 data/*.json
+data/*.jsonl
+# once we've got a real multi-cycle run recorded for the demo, the
+# ledger + cycle log for THAT run get force-added as submission evidence
+# (see README) - this blanket ignore is just for day to day dev/testing

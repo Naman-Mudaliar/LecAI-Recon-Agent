@@ -42,7 +42,8 @@ def main():
             print("  trip not in our cached schedule, skipping\n")
             continue
 
-        results = fields.check_vehicle(v, trip, calendar, calendar_dates, state)
+        check = fields.check_vehicle(v, trip, calendar, calendar_dates, state)
+        results = check["field_results"]
 
         disagreement_count = sum(1 for r in results if r["disagreement"] is True)
 
