@@ -23,3 +23,7 @@ data/*.jsonl
 # deal, day to day dev noise, force-add the real ones from the recorded
 # demo run same as the ledger/cycle log above
 reports/
+
+# my own notes for recording the walkthrough video - not a submission
+# artifact, just a script for me to read off
+VIDEO_SCRIPT.md

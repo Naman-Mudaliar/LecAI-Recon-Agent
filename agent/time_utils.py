@@ -9,7 +9,7 @@
 # because of bst - "19:41:00" means a different utc instant in august than
 # it does in january.
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 LONDON = ZoneInfo("Europe/London")
@@ -49,3 +49,27 @@ def gtfs_time_to_epoch(service_date, gtfs_time):
         days=day_offset, hours=hours, minutes=minutes, seconds=seconds
     )
     return int(local_dt.timestamp())
+
+
+def gtfs_time_to_epoch_fixed_gmt(service_date, gtfs_time):
+    # same math as gtfs_time_to_epoch, but pins the offset to UTC+0 (GMT)
+    # instead of resolving Europe/London's real BST/GMT offset for the
+    # date. this exists for exactly one caller: BODS's live
+    # TripDescriptor.start_time, which we've confirmed (agent/fields.py
+    # check_start_time_date) is serialised without applying the daylight-
+    # saving offset - so treating it as fixed-GMT rather than proper
+    # Europe/London cancels their bug out exactly. in winter, GMT and
+    # Europe/London ARE the same offset, so this is a no-op then - it only
+    # actually changes anything during BST, which is exactly when the bug
+    # exists. do not use this for anything else; every other conversion in
+    # this project should go through gtfs_time_to_epoch above.
+    hours, minutes, seconds = (int(x) for x in gtfs_time.split(":"))
+    day_offset, hours = divmod(hours, 24)
+
+    base_date = datetime.strptime(service_date, "%Y%m%d")
+    midnight_utc = base_date.replace(tzinfo=timezone.utc)
+
+    dt = midnight_utc + timedelta(
+        days=day_offset, hours=hours, minutes=minutes, seconds=seconds
+    )
+    return int(dt.timestamp())

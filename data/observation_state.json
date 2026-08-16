@@ -1,32 +1,64 @@
 {
   "trips": {
-    "VJ79f91da6e4bc197f85eb32cbc6b61affdad69455": {
-      "last_matched_stop_sequence": 4
+    "VJb437f5c88a090560ba3d98ee9725c522b3de3203": {
+      "last_matched_stop_sequence": 48
     },
-    "VJ0205bff42e60cf34ff394d5e0a4a62233bd822a2": {
-      "last_matched_stop_sequence": 6
+    "VJ286d51ecb1d4410c504e1fb81179f97e34317f14": {
+      "last_matched_stop_sequence": 45
+    },
+    "VJc1ebd98a8777af0e989aeb4c13085ca157eb1a82": {
+      "last_matched_stop_sequence": 16
+    },
+    "VJ8be995dc0a971c4decd6070ae9b2480f7fe681d0": {
+      "last_matched_stop_sequence": 48,
+      "last_matched_at": 1786905535
+    },
+    "VJf9875ea39fa396897af9cab10dad29399390a4cc": {
+      "last_matched_stop_sequence": 48,
+      "last_matched_at": 1786905938
+    },
+    "VJd6c2e948a12b52a5e1bd42670b08970c24f0d65c": {
+      "last_matched_stop_sequence": 46,
+      "last_matched_at": 1786906351
+    },
+    "VJ882d23fd2b0db2a34de05a459a363e5aef98e592": {
+      "last_matched_stop_sequence": 46
+    },
+    "VJb180b98beb462dc8431246baec03af83a0997e35": {
+      "last_matched_stop_sequence": 48
+    },
+    "VJ1450749e6af95cde11d32fab818a370b0abea792": {
+      "last_matched_stop_sequence": 42
+    },
+    "VJ7c5d8b954a41a50b3b7f1403ad16b8d234ce903a": {
+      "last_matched_stop_sequence": 0
     }
   },
   "vehicles": {
-    "YX74OJE": {
-      "lat": 53.46285629272461,
-      "lon": -2.2778120040893555,
-      "timestamp": 1786890454
-    },
     "YX74OJJ": {
-      "lat": 53.43077850341797,
-      "lon": -2.319581985473633,
-      "timestamp": 1786890453
+      "lat": 53.38848876953125,
+      "lon": -2.3470659255981445,
+      "timestamp": 1786910262
+    },
+    "YX74OJM": {
+      "lat": 53.38817596435547,
+      "lon": -2.3472979068756104,
+      "timestamp": 1786906499
     },
     "YX74OJT": {
-      "lat": 53.468265533447266,
-      "lon": -2.2363409996032715,
-      "timestamp": 1786890458
+      "lat": 53.480499267578125,
+      "lon": -2.2375900745391846,
+      "timestamp": 1786904803
     },
-    "YX74OKA": {
-      "lat": 53.424869537353516,
-      "lon": -2.325974941253662,
-      "timestamp": 1786889847
+    "YX74OJO": {
+      "lat": 53.480445861816406,
+      "lon": -2.2381129264831543,
+      "timestamp": 1786908201
+    },
+    "YX74OKH": {
+      "lat": 53.480384826660156,
+      "lon": -2.2380149364471436,
+      "timestamp": 1786911302
     }
   }
 }

@@ -10,7 +10,7 @@
 # day, but it can never clear a chronic-conflict freeze - only an actual
 # confirmed stop match can do that).
 #
-# no signal/junction/dwell modeling either - just "how fast were you
+# no signal/junction/dwell modelling either - just "how fast were you
 # actually moving between your last two real gps fixes, project that
 # forward". least accurate right when a bus is about to stop at a light
 # it cant see coming. thats a real limitation, not hidden by the source

@@ -28,12 +28,21 @@ def check_vehicle(vehicle, trip, calendar, calendar_dates, state):
     trip_state = state.get_trip_state(vehicle["trip_id"])
     prior_last_matched = trip_state["last_matched_stop_sequence"]
 
+    last_position = state.get_vehicle_last_position(vehicle["vehicle_id"])
+
     matched_stop, match_distance = matching.match_vehicle_to_stop(
         trip["stops"], vehicle["lat"], vehicle["lon"], prior_last_matched
     )
     new_last_matched = matched_stop["stop_sequence"] if matched_stop else prior_last_matched
 
-    last_position = state.get_vehicle_last_position(vehicle["vehicle_id"])
+    # display-only: when nothing confirmed this cycle, still surface the
+    # closest scheduled stop and how far off it was, so a viewer isn't
+    # just told "no match" with no way to see why. never affects state.
+    nearest_candidate_stop, nearest_candidate_distance = (None, None)
+    if matched_stop is None:
+        nearest_candidate_stop, nearest_candidate_distance = matching.nearest_candidate_stop(
+            trip["stops"], vehicle["lat"], vehicle["lon"], prior_last_matched
+        )
 
     # whatever's next on the schedule from wherever we are now - a plain
     # lookup, always known if the trip has a stop left, regardless of
@@ -75,6 +84,8 @@ def check_vehicle(vehicle, trip, calendar, calendar_dates, state):
         "matched_stop": matched_stop,
         "matched_this_cycle": matched_stop is not None,
         "last_matched_stop_sequence": new_last_matched,
+        "nearest_candidate_stop": nearest_candidate_stop,
+        "nearest_candidate_distance": nearest_candidate_distance,
         "next_stop": next_stop,
         "next_stop_eta_epoch": predicted_arrival_epoch if eta_next_stop is not None else None,
         "next_stop_eta_detail": eta_detail,
@@ -161,8 +172,16 @@ def check_per_stop_adherence(trip, prior_last_matched, new_last_matched):
     # field 3 - possible skipped stops. only timepoint stops count (see
     # config.py for why) - a timepoint strictly between where we were last
     # cycle and where we are now, that wasnt the stop we just matched, is
-    # one we went past without ever being detected near it
-    if new_last_matched <= prior_last_matched:
+    # one we went past without ever being detected near it.
+    #
+    # prior_last_matched == -1 means this trip's first-ever match just
+    # happened this cycle (see agent/matching.py's bootstrap search) -
+    # there's no observation history between "never seen" and "just
+    # matched", so anything in between is stops we simply weren't
+    # watching yet, not stops the bus skipped. flagging those as
+    # "possible skip" would be a false anomaly on literally every trip's
+    # first sighting, not a real finding.
+    if new_last_matched <= prior_last_matched or prior_last_matched == -1:
         return _no_observation("per_stop_adherence")
 
     skipped_timepoints = [
@@ -252,21 +271,30 @@ def check_start_time_date(vehicle, trip, calendar, calendar_dates, service_id):
     # schedule expects.
     #
     # real finding while building this: every single active vehicle on
-    # the route right now shows an exact -3600s (1 hour) drift here.
-    # checked it wasnt our own bug - the two epoch conversions go through
-    # the exact same function, so a bug in our own tz handling would
-    # cancel out, not produce a clean 3600s gap. the raw strings
-    # themselves are 1h apart (live says "18:41:00", schedule says
-    # "19:41:00"), and 18:41 + 1h = 19:41 exactly - consistent with
-    # bods's live feed not applying the BST offset when it serializes
-    # start_time. real upstream data quality issue, not us. this is
-    # genuinely what field 6 is supposed to catch.
+    # the route showed an exact -3600s (1 hour) drift here. checked it
+    # wasnt our own bug - the two epoch conversions went through the exact
+    # same function, so a bug in our own tz handling would cancel out, not
+    # produce a clean 3600s gap. the raw strings themselves were 1h apart
+    # (live said "18:41:00", schedule said "19:41:00"), and 18:41 + 1h =
+    # 19:41 exactly - consistent with bods's live feed not applying the
+    # BST offset when it serialises start_time. real upstream data quality
+    # issue, not us.
+    #
+    # compensated for it directly: the live value goes through
+    # gtfs_time_to_epoch_fixed_gmt instead of the normal Europe/London
+    # conversion, which cancels bods's missing-BST-offset bug exactly
+    # (and is a no-op outside BST, since GMT and Europe/London agree in
+    # winter). this field still catches genuine mismatches - a trip
+    # running on the wrong day, or a start time thats off by something
+    # other than exactly this known bug - it just no longer flags the one
+    # specific, confirmed, upstream quirk as if it were a live/warehouse
+    # disagreement worth a human's attention every single cycle.
     if not trip["stops"]:
         return _no_observation("start_time_date")
 
     first_stop = trip["stops"][0]
     expected_start_epoch = time_utils.gtfs_time_to_epoch(vehicle["start_date"], first_stop["departure_time"])
-    reported_start_epoch = time_utils.gtfs_time_to_epoch(vehicle["start_date"], vehicle["start_time"])
+    reported_start_epoch = time_utils.gtfs_time_to_epoch_fixed_gmt(vehicle["start_date"], vehicle["start_time"])
     drift = reported_start_epoch - expected_start_epoch
 
     service_today = service_runs_on(calendar, calendar_dates, service_id, vehicle["start_date"])

@@ -97,16 +97,26 @@ def resolve_field(trip_id, field_result, ledger, now):
             new_streak = 0
             verdict, resolved_value, reason = _resolve_verdict(field_name, field_result)
         elif not field_result["disagreement"]:
+            # while under review, resolved_value always defaults to the
+            # warehouse's value, not whatever live last happened to say -
+            # a field only gets here because live has proven itself
+            # unreliable for this (trip, field) recently, so there's no
+            # overriding evidence to trust a live number over the
+            # published timetable until a human clears it
             verdict = "WITHHELD_UNDER_REVIEW"
-            resolved_value = prior["resolved_value"] if prior else None
+            resolved_value = field_result["warehouse_value"]
             reason = (
                 f"clean, but only ESTIMATED - only a CONFIRMED match clears a freeze "
-                f"({streak} cycles in review). {field_result['detail']}"
+                f"({streak} cycles in review). defaulting to warehouse, no overriding evidence "
+                f"live can be trusted yet. {field_result['detail']}"
             )
         else:
             verdict = "WITHHELD_UNDER_REVIEW"
-            resolved_value = prior["resolved_value"] if prior else None
-            reason = f"frozen at last resolved value ({streak} cycles in review). {field_result['detail']}"
+            resolved_value = field_result["warehouse_value"]
+            reason = (
+                f"defaulting to warehouse, no overriding evidence live can be trusted "
+                f"({streak} cycles in review). {field_result['detail']}"
+            )
     else:
         verdict, resolved_value, reason = _resolve_verdict(field_name, field_result)
 

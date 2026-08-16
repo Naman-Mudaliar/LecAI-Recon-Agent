@@ -1,9 +1,12 @@
 # renders the conflicts from one real reconciliation cycle into a pdf -
 # meant to be handed to someone who wants the recon logic and the
 # underlying eta math on paper, not scrolling back through a terminal.
-# only conflicts (+ suspects + possible cancellations) go in here, not the
-# whole cycle - the terminal report already shows everything, this is the
-# "here's exactly why, in writing" leave-behind for the ones that matter.
+# only conflicts (+ suspects) go in here, not the whole cycle and not
+# cancellations - this is the leave-behind for the build assessment brief
+# specifically ("detect disagreement, decide who wins, explain why"),
+# kept as tight to that as possible. cancellations are a real capability
+# but arent live/warehouse field disagreement, so they dont belong in a
+# report thats meant to stay brief and on-brief.
 #
 # reuses agent.policy.recon_steps and agent.time_utils.format_eta - the
 # exact same functions the terminal report calls, so the pdf can never
@@ -20,13 +23,13 @@ from datetime import datetime
 from fpdf import FPDF
 from fpdf.enums import XPos, YPos
 
-from agent import policy, time_utils
+from agent import policy, stop_names, time_utils
 
 _VERDICT_LABEL = {
     "LIVE_WINS": "LIVE WINS - live feed is the resolved value",
     "ANOMALY": "ANOMALY - flagged, no value picked",
     "DATA_QUALITY_FLAG": "DATA QUALITY FLAG - flagged, no value picked",
-    "WITHHELD_UNDER_REVIEW": "FROZEN - MANUAL REVIEW REQUIRED",
+    "WITHHELD_UNDER_REVIEW": "FROZEN - NOT ENOUGH EVIDENCE, TRUST WAREHOUSE (timetable)",
 }
 
 _CONFLICT_VERDICTS = {"LIVE_WINS", "ANOMALY", "DATA_QUALITY_FLAG", "WITHHELD_UNDER_REVIEW"}
@@ -88,10 +91,22 @@ def _print_conflict_field(pdf, r):
     pdf.ln(2)
 
 
+def _format_reg(vehicle_id):
+    # same plate-shape formatting as run.py's terminal report - keeps the
+    # pdf and terminal showing the same reg, not two different renderings
+    if len(vehicle_id) == 7:
+        return f"{vehicle_id[:4]} {vehicle_id[4:]}"
+    return vehicle_id
+
+
 def _print_bus(pdf, vr):
     pdf.set_font("Helvetica", "B", 12)
-    pdf.cell(0, 7, f"bus {vr['vehicle_id']}  ->  {vr['trip_headsign']} (final destination)", **_NEXT_LINE)
-    _line(pdf, f"position: {vr['lat']:.4f}, {vr['lon']:.4f}")
+    pdf.cell(0, 7, f"Bus Reg: {_format_reg(vr['vehicle_id'])}  ->  {vr['trip_headsign']} (final destination)", **_NEXT_LINE)
+    location = stop_names.location_description(
+        vr.get("prev_stop_name"), vr.get("nearest_candidate_name"), vr.get("nearest_candidate_distance"),
+        vr.get("address"), vr["lat"], vr["lon"],
+    )
+    _line(pdf, f"position: {location}")
 
     if vr["next_stop_name"]:
         _line(pdf, f"next stop: {vr['next_stop_name']} (scheduled {vr['next_stop_scheduled']})")
@@ -108,13 +123,15 @@ def _print_bus(pdf, vr):
 def has_anything_to_report(summary):
     # dont bother writing a pdf for a cycle where nothing happened -
     # matches the "only conflicts go in" framing, an empty pdf isnt useful
-    # to anyone
+    # to anyone. cancellations dont count here any more either - a cycle
+    # with only possible cancellations and no field conflicts doesnt need
+    # a pdf, that stays in the terminal report
     suspects = [vr for vr in summary["vehicles"] if vr["outcome"]["suspect"]]
     conflicts = [
         r for vr in summary["vehicles"] if not vr["outcome"]["suspect"]
         for r in vr["outcome"]["resolutions"] if r["verdict"] in _CONFLICT_VERDICTS
     ]
-    return bool(suspects or conflicts or summary["cancellations"])
+    return bool(suspects or conflicts)
 
 
 def generate(summary, path):
@@ -133,10 +150,7 @@ def generate(summary, path):
     total_conflicts = sum(len(c) for _, c in normal_with_conflicts)
 
     pdf = _Report()
-    pdf._subtitle = (
-        f"Cycle: {ts}   |   {len(suspects)} suspect   {total_conflicts} field conflict(s)   "
-        f"{len(summary['cancellations'])} possible cancellation(s)"
-    )
+    pdf._subtitle = f"Cycle: {ts}   |   {len(suspects)} suspect   {total_conflicts} field conflict(s)"
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
 
@@ -156,13 +170,6 @@ def generate(summary, path):
             for r in conflicts:
                 _print_conflict_field(pdf, r)
             pdf.ln(2)
-
-    if summary["cancellations"]:
-        _heading(pdf, "POSSIBLE CANCELLATIONS (scheduled, never seen live, past grace period)")
-        for c in summary["cancellations"]:
-            _line(pdf, f"{c['trip_id'][:24]}...   {c['record']['reason']}")
-            _line(pdf, f"to clear: {policy.recon_steps(c['record'])}")
-            pdf.ln(1)
 
     path.parent.mkdir(parents=True, exist_ok=True)
     pdf.output(str(path))

@@ -41,3 +41,37 @@ def test_midnight_exactly():
     dt = datetime.fromtimestamp(epoch, tz=timezone.utc)
     assert dt.day == 14  # bst means local midnight is still the previous utc day
     assert dt.hour == 23
+
+
+# --- gtfs_time_to_epoch_fixed_gmt: bods's missing-BST-offset bug ---------
+#
+# exists for exactly one caller (agent/fields.py check_start_time_date) -
+# these pin down the specific behaviour that makes it useful there: it
+# disagrees with the normal Europe/London conversion by exactly 1h during
+# BST (that's the whole point - it cancels bods's bug), and agrees exactly
+# with it in winter (no bug to cancel then).
+
+def test_fixed_gmt_differs_from_london_by_one_hour_in_summer():
+    # "19:41" BST is 18:41 utc (normal), but interpreted as fixed-GMT it's
+    # 19:41 utc - the fixed-GMT reading lands an hour LATER in real utc
+    # terms, which is exactly the gap that cancels bods's bug (see the
+    # end-to-end test below)
+    normal = time_utils.gtfs_time_to_epoch("20260815", "19:41:00")
+    fixed_gmt = time_utils.gtfs_time_to_epoch_fixed_gmt("20260815", "19:41:00")
+    assert fixed_gmt - normal == 3600
+
+
+def test_fixed_gmt_matches_london_exactly_in_winter():
+    normal = time_utils.gtfs_time_to_epoch("20260115", "19:41:00")
+    fixed_gmt = time_utils.gtfs_time_to_epoch_fixed_gmt("20260115", "19:41:00")
+    assert normal == fixed_gmt
+
+
+def test_fixed_gmt_cancels_bods_bug_end_to_end():
+    # the actual real-world pattern: bods reports "18:41:00" for a bus
+    # whose true local start was 19:41:00 BST. interpreting bods's raw
+    # string as fixed-GMT should land on the exact same utc instant as the
+    # correct Europe/London reading of the true local time.
+    true_local_epoch = time_utils.gtfs_time_to_epoch("20260815", "19:41:00")
+    bods_reported_epoch = time_utils.gtfs_time_to_epoch_fixed_gmt("20260815", "18:41:00")
+    assert true_local_epoch == bods_reported_epoch

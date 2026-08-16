@@ -97,16 +97,23 @@ def test_crossing_threshold_enters_manual_review():
     assert result["review_status"] == "MANUAL_REVIEW_REQUIRED"
 
 
-def test_withheld_under_review_freezes_the_resolved_value():
+def test_withheld_under_review_defaults_resolved_value_to_warehouse():
+    # once frozen, resolved_value always falls back to the warehouse's
+    # value - live has proven itself unreliable for this field recently,
+    # so there's no overriding evidence to prefer live's number over the
+    # published timetable until a human clears it
     ledger = fresh_ledger()
     for i in range(config.CHRONIC_CONFLICT_STREAK_THRESHOLD):
-        policy.resolve_field("T1", make_result("arrival_timing", True, live_value=f"+{90+i}s"), ledger, NOW)
-    frozen_value = ledger.get_field("T1", "arrival_timing")["resolved_value"]
+        policy.resolve_field(
+            "T1", make_result("arrival_timing", True, live_value=f"+{90+i}s", warehouse_value="19:41:00"),
+            ledger, NOW,
+        )
 
-    # keeps disagreeing with a DIFFERENT live value - should stay frozen at the old one
-    result = policy.resolve_field("T1", make_result("arrival_timing", True, live_value="+999s"), ledger, NOW)
+    result = policy.resolve_field(
+        "T1", make_result("arrival_timing", True, live_value="+999s", warehouse_value="19:41:00"), ledger, NOW,
+    )
     assert result["verdict"] == "WITHHELD_UNDER_REVIEW"
-    assert result["resolved_value"] == frozen_value
+    assert result["resolved_value"] == "19:41:00"
     assert result["resolved_value"] != "+999s"
 
 
@@ -231,11 +238,12 @@ def test_clean_estimated_cycle_cannot_clear_manual_review():
         policy.resolve_field("T1", r, ledger, NOW)
     assert ledger.get_field("T1", "arrival_timing")["review_status"] == "MANUAL_REVIEW_REQUIRED"
 
-    clean_estimate = make_result("arrival_timing", False, live_value="~+5s")
+    clean_estimate = make_result("arrival_timing", False, live_value="~+5s", warehouse_value="19:41:00")
     clean_estimate["source"] = "estimated"
     result = policy.resolve_field("T1", clean_estimate, ledger, NOW)
     assert result["review_status"] == "MANUAL_REVIEW_REQUIRED"  # still stuck
     assert result["verdict"] == "WITHHELD_UNDER_REVIEW"
+    assert result["resolved_value"] == "19:41:00"  # still defaults to warehouse while frozen
 
 
 def test_clean_confirmed_cycle_clears_review_even_after_estimated_history():

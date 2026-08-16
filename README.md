@@ -50,7 +50,7 @@ pip install -r requirements.txt
 # https://data.bus-data.dft.gov.uk)
 
 python run.py                # one real reconciliation cycle
-python run.py --verbose      # + the full six-field dump per bus, not just the notable ones
+python run.py --verbose      # + the nearby scheduled-stop window per bus (all six fields already print by default)
 python -m pytest tests/ -v   # 57 tests, all offline/synthetic
 ```
 
@@ -175,7 +175,7 @@ rather than silently dropping them or - worse - silently trusting them.
   GTFS-RT feed would.
 - **a real BST bug in BODS's own feed** - field 6 catches every active
   vehicle showing an exact -3600s start-time drift, consistent with the
-  live feed not applying the daylight-saving offset when it serializes
+  live feed not applying the daylight-saving offset when it serialises
   `start_time`. checked it wasn't my own bug first - both sides of that
   comparison go through the identical time-conversion function.
 - **a real bug in my own matcher**, caught before it shipped: if a bus
@@ -184,6 +184,20 @@ rather than silently dropping them or - worse - silently trusting them.
   happily projected against it, producing numbers like "6826s late" that
   looked precise and meant absolutely nothing. fixed with a distance
   sanity bound (`MAX_ESTIMATE_DISTANCE_METERS`).
+- **a second, permanent version of the same class of bug**, caught live
+  against real data, not synthetically: a trip's *first-ever* observation
+  only ever searched the first `STOP_MATCH_LOOKAHEAD` stops from the start
+  of the route. fine if a bus happens to be near the start when first
+  seen, permanently broken if it doesn't - since a failed match never
+  advances `last_matched_stop_sequence` off its default (-1), the exact
+  same failed search repeats every single future cycle, forever. caught
+  this because two real buses stayed stuck "untracked" across 6+
+  consecutive real cycles - checked one directly against the full
+  schedule and found it sitting 8.6m from a real stop (sequence 31) that
+  the matcher was never even looking at. fixed by letting the very first
+  match for a trip search the whole route, not just a forward window -
+  there's no backward-jump risk to guard against on a first match anyway,
+  since nothing's locked on yet to jump backward from.
 
 ---
 

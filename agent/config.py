@@ -70,17 +70,34 @@ STATIC_GTFS_EXTRACT_DIR = DATA_DIR / "nw_gtfs"
 # we only ever search forward from there. that's what stops us from
 # accidentally matching a stop the bus already passed on an earlier loop
 # of the route.
-STOP_MATCH_RADIUS_METERS = 350
-# bus stops in urban manchester can be as close as ~250-300m apart, so this
-# needs to be tight enough not to straddle two stops at once, but loose
-# enough to survive normal gps drift (usually 10-50m, occasionally worse
-# near tall buildings/tunnels). 350m is a starting point, not gospel -
-# worth revisiting once we see real match rates.
-
-STOP_MATCH_LOOKAHEAD = 8
-# only consider the next 8 scheduled stops after our last confirmed match.
-# keeps the search cheap and stops a single bad gps ping from jumping the
-# match miles down the route.
+STOP_MATCH_RADIUS_METERS = 450
+# revised from an initial 350m after exactly the "worth revisiting once we
+# see real match rates" case this comment used to warn about: a real trip
+# that had confirmed cleanly every single cycle for 5 cycles straight
+# missed by just 4m (354m) on the 6th. checked real consecutive-stop gaps
+# across the whole static feed to find out why: median gap is ~283m, but
+# that's skewed by dense city-centre stops - plenty of real suburban gaps
+# on this route run 400-900m (Poplar Road -> Crossford Bridge alone is
+# 925m), a lot further than the "~250-300m apart, urban manchester"
+# assumption 350m was originally set from. 450m sits comfortably past the
+# real miss above while staying under the ~481m p90 gap, so it still won't
+# usually span a full gap between two consecutive real stops. straddling
+# isn't actually driven by this constant anyway - the nearest-candidate
+# pick already happens before the radius check, so a wider radius changes
+# the confidence bar for calling something confirmed, not which candidate
+# wins when several are in range.
+#
+# the search itself used to also cap how far ahead it would look (only the
+# next 8 scheduled stops past the anchor), on top of this radius, meant to
+# stop a single bad gps ping from snapping the match onto the wrong pass
+# of the route's own loop near Altrincham. dropped that cap after checking
+# it against every real stop pair on this route: zero pairs 9+ stops apart
+# in sequence are within match radius of each other in either direction,
+# so it wasn't buying real safety - it was only ever causing a trip to get
+# stuck unconfirmed the moment a real gap in polling let the bus travel
+# further than the cap allowed (confirmed live, twice - once 24 stops
+# behind, once 11 stops behind after just 7 minutes). the forward-only
+# search (agent/matching.py) already does the real protective work here.
 
 # --- field 1/2: timing -----------------------------------------------------
 
@@ -130,15 +147,15 @@ MIN_SPEED_MPS_FOR_ESTIMATE = 1.0
 # emit garbage.
 
 MAX_ESTIMATE_DISTANCE_METERS = 2000
-# real bug caught while building this: if a bus moves further than
-# STOP_MATCH_LOOKAHEAD stops between two polls (easy to happen with sparse
-# polling - 49 stops over a ~45 min trip is roughly a stop a minute), the
-# matcher never catches back up and last_matched_stop_sequence gets stuck
+# real bug caught while building this: if a bus goes multiple cycles in a
+# row without confirming a stop within STOP_MATCH_RADIUS_METERS (easy to
+# happen with sparse polling - 49 stops over a ~45 min trip is roughly a
+# stop a minute), last_matched_stop_sequence gets stuck
 # pointing at a stop the bus left behind ages ago. the eta estimator was
 # then happily projecting against that stale "next stop" and producing
 # things like "6826s late" - not a real finding, just stale tracking state
 # treated as current. 2km is generously more than any real gap between
-# adjacent stops on this route (a few hundred meters, worst case) - past
+# adjacent stops on this route (a few hundred metres, worst case) - past
 # that, we're not tracking the right stop anymore, so dont estimate at all
 # rather than emit a number that looks precise but means nothing.
 
