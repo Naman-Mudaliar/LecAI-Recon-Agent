@@ -1,13 +1,11 @@
-"""
-live source: bods gtfs-rt feed, vehicle positions only.
-
-turns out bods's "gtfs-rt" is a converted version of their SIRI-VM location
-data, so it only ever contains VehiclePosition entities - no TripUpdate,
-no delay, no predicted arrival times. this is just raw avl (automatic
-vehicle location): where is the bus right now, nothing more. see
-agent/config.py for the longer version of why that matters for this
-project.
-"""
+# live source: bods gtfs-rt feed, vehicle positions only.
+#
+# turns out bods's "gtfs-rt" is a converted version of their SIRI-VM
+# location data, so it only ever contains VehiclePosition entities - no
+# TripUpdate, no delay, no predicted arrival times. this is just raw avl
+# (automatic vehicle location): where is the bus right now, nothing more.
+# see agent/config.py for the longer version of why that matters for
+# this project.
 
 import requests
 from google.transit import gtfs_realtime_pb2
@@ -18,9 +16,9 @@ GTFS_RT_URL = f"{config.BASE_URL}/api/v1/gtfsrtdatafeed/"
 
 
 def fetch_vehicle_positions(route_id=config.STATIC_ROUTE_ID):
-    """hits the live feed, filters down to just our route, returns plain
-    dicts instead of protobuf objects so the rest of the codebase doesn't
-    need to know or care about protobuf."""
+    # hits the live feed, filters down to just our route, returns plain
+    # dicts instead of protobuf objects so the rest of the codebase
+    # doesn't need to know or care about protobuf
     params = {
         "api_key": config.BODS_API_KEY,
         "boundingBox": ",".join(str(v) for v in [

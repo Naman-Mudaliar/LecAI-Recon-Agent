@@ -1,8 +1,7 @@
-"""
-tests for the gtfs time -> epoch conversion, including the annoying bits:
-times past 24:00:00 for next-day trips, and bst vs gmt (uk clocks change
-so the same "19:41:00" is a different utc instant depending on the date).
-"""
+# tests for the gtfs time -> epoch conversion, including the annoying
+# bits: times past 24:00:00 for next-day trips, and bst vs gmt (uk
+# clocks change so the same "19:41:00" is a different utc instant
+# depending on the date).
 
 import sys
 from datetime import datetime, timezone

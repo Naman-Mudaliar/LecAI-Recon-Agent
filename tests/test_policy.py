@@ -1,9 +1,7 @@
-"""
-tests for the phase 4 policy - who wins, anomaly vs data-quality framing,
-the suspect meta-trigger, and the chronic-conflict freeze/clear cycle.
-all in-memory, never touches disk (Ledger only reads/writes when you ask
-it to, and we never call .save()).
-"""
+# tests for the phase 4 policy - who wins, anomaly vs data-quality
+# framing, the suspect meta-trigger, and the chronic-conflict
+# freeze/clear cycle. all in-memory, never touches disk (Ledger only
+# reads/writes when you ask it to, and we never call .save()).
 
 import sys
 from datetime import datetime, timezone
@@ -205,6 +203,69 @@ def test_cancellation_not_flagged_too_far_in_the_past():
     schedule = {"T1": make_schedule_trip("15:00:00")}
     results = policy.check_for_cancellations(schedule, CAL, CAL_DATES, ledger, NOW, "20260815")
     assert results == []
+
+
+# --- confirmed vs estimated source gating ----------------------------------
+
+def test_estimated_disagreement_still_builds_the_streak():
+    ledger = fresh_ledger()
+    result = None
+    for _ in range(config.CHRONIC_CONFLICT_STREAK_THRESHOLD):
+        r = make_result("arrival_timing", True, live_value="~+90s")
+        r["source"] = "estimated"
+        result = policy.resolve_field("T1", r, ledger, NOW)
+    assert result["review_status"] == "MANUAL_REVIEW_REQUIRED"
+
+
+def test_clean_estimated_cycle_cannot_clear_manual_review():
+    ledger = fresh_ledger()
+    for _ in range(config.CHRONIC_CONFLICT_STREAK_THRESHOLD):
+        r = make_result("arrival_timing", True, live_value="~+90s")
+        r["source"] = "estimated"
+        policy.resolve_field("T1", r, ledger, NOW)
+    assert ledger.get_field("T1", "arrival_timing")["review_status"] == "MANUAL_REVIEW_REQUIRED"
+
+    clean_estimate = make_result("arrival_timing", False, live_value="~+5s")
+    clean_estimate["source"] = "estimated"
+    result = policy.resolve_field("T1", clean_estimate, ledger, NOW)
+    assert result["review_status"] == "MANUAL_REVIEW_REQUIRED"  # still stuck
+    assert result["verdict"] == "WITHHELD_UNDER_REVIEW"
+
+
+def test_clean_confirmed_cycle_clears_review_even_after_estimated_history():
+    ledger = fresh_ledger()
+    for _ in range(config.CHRONIC_CONFLICT_STREAK_THRESHOLD):
+        r = make_result("arrival_timing", True, live_value="~+90s")
+        r["source"] = "estimated"
+        policy.resolve_field("T1", r, ledger, NOW)
+
+    clean_confirmed = make_result("arrival_timing", False, live_value="+5s")
+    clean_confirmed["source"] = "confirmed"
+    result = policy.resolve_field("T1", clean_confirmed, ledger, NOW)
+    assert result["review_status"] == "NORMAL"
+    assert result["verdict"] == "NO_CONFLICT"
+
+
+def test_clean_estimate_while_normal_does_not_reset_an_existing_streak():
+    ledger = fresh_ledger()
+    r = make_result("arrival_timing", True, live_value="~+90s")
+    r["source"] = "estimated"
+    policy.resolve_field("T1", r, ledger, NOW)  # streak -> 1
+
+    clean_estimate = make_result("arrival_timing", False, live_value="~+5s")
+    clean_estimate["source"] = "estimated"
+    result = policy.resolve_field("T1", clean_estimate, ledger, NOW)
+    assert result["conflict_streak"] == 1  # unchanged, not reset to 0
+    assert result["verdict"] == "NO_CONFLICT"  # still resolves normally though
+
+
+def test_fields_without_a_source_key_behave_as_before():
+    # fields 3-6 dont set "source" at all - should default to confirmed
+    # behaviour (a clean cycle resets the streak like always)
+    ledger = fresh_ledger()
+    policy.resolve_field("T1", make_result("direction", True), ledger, NOW)
+    result = policy.resolve_field("T1", make_result("direction", False), ledger, NOW)
+    assert result["conflict_streak"] == 0
 
 
 def test_cancellation_not_flagged_if_already_seen():

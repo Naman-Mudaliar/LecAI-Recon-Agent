@@ -1,14 +1,12 @@
-"""
-phase 1 check - make sure we can actually reach bods and that route 263
-shows up in both the static timetable and the live feed before building
-anything on top of it. run this straight from the repo root:
-
-    python scripts/check_bods_connection.py
-
-this is basically the thing the build brief asks for up front: "confirm
-route 263 actually appears in both the live and static bods datasets...
-this has not yet been verified - do it first". well, it has now.
-"""
+# phase 1 check - make sure we can actually reach bods and that route 263
+# shows up in both the static timetable and the live feed before building
+# anything on top of it. run this straight from the repo root:
+#
+#     python scripts/check_bods_connection.py
+#
+# this is basically the thing the build brief asks for up front: "confirm
+# route 263 actually appears in both the live and static bods datasets...
+# this has not yet been verified - do it first". well, it has now.
 
 import sys
 from pathlib import Path

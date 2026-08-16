@@ -1,15 +1,13 @@
-"""
-config for the route 263 reconciliation agent. all the stuff that would
-normally be hardcoded scattered through the codebase lives here instead.
-
-route 263 runs manchester piccadilly gardens <-> altrincham interchange,
-operated by bee network (was stagecoach manchester before the franchise
-takeover). confirmed present in both the bods static timetable and the
-live gtfs-rt feed on 2026-08-15 - see scripts/check_bods_connection.py.
-
-fallback routes if 263 ever stops publishing: 43 (manchester-stockport)
-or 192 (manchester-hyde/glossop), both long established on bods.
-"""
+# config for the route 263 reconciliation agent. all the stuff that would
+# normally be hardcoded scattered through the codebase lives here instead.
+#
+# route 263 runs manchester piccadilly gardens <-> altrincham interchange,
+# operated by bee network (was stagecoach manchester before the franchise
+# takeover). confirmed present in both the bods static timetable and the
+# live gtfs-rt feed on 2026-08-15 - see scripts/check_bods_connection.py.
+#
+# fallback routes if 263 ever stops publishing: 43 (manchester-stockport)
+# or 192 (manchester-hyde/glossop), both long established on bods.
 
 import os
 from pathlib import Path
@@ -114,6 +112,28 @@ MIN_DISPLACEMENT_METERS_FOR_BEARING = 80
 # the bearing between them - normal gps drift is often 10-50m on its own,
 # so a bus that's barely moved (stuck in traffic, stopped at lights) would
 # give a basically random bearing if we didn't skip the check here.
+
+# --- eta estimation between confirmed stop matches --------------------
+
+MIN_SPEED_MPS_FOR_ESTIMATE = 1.0
+# below this (~3.6 km/h) we dont trust a speed derived from two position
+# fixes enough to project an eta from it - the bus is stopped, queued, or
+# at a light, and dividing by a near-zero speed gives a wildly unstable
+# estimate. below this floor we just dont estimate that cycle rather than
+# emit garbage.
+
+MAX_ESTIMATE_DISTANCE_METERS = 2000
+# real bug caught while building this: if a bus moves further than
+# STOP_MATCH_LOOKAHEAD stops between two polls (easy to happen with sparse
+# polling - 49 stops over a ~45 min trip is roughly a stop a minute), the
+# matcher never catches back up and last_matched_stop_sequence gets stuck
+# pointing at a stop the bus left behind ages ago. the eta estimator was
+# then happily projecting against that stale "next stop" and producing
+# things like "6826s late" - not a real finding, just stale tracking state
+# treated as current. 2km is generously more than any real gap between
+# adjacent stops on this route (a few hundred meters, worst case) - past
+# that, we're not tracking the right stop anymore, so dont estimate at all
+# rather than emit a number that looks precise but means nothing.
 
 MAX_BEARING_DIFFERENCE_DEGREES = 90
 # if the vehicles actual direction of travel is more than 90 degrees off

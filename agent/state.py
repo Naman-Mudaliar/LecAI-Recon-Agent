@@ -1,23 +1,24 @@
-"""
-observation state - the small bit of cross-cycle memory the field checks
-actually need to make correct observations. NOT the reconciliation ledger
-(streaks, frozen/manual-review flags, whos-winning-per-field) - thats a
-phase 4 thing built on top of this. this is just "what did we last see"
-so a single cycle isn't working blind.
-
-two things get remembered:
-  - last_matched_stop_sequence per trip: how far along the trip we've
-    confidently matched so far. used by the matching search (only look
-    ahead of here), and by the skip checker in agent/fields.py - any
-    timepoint stop strictly between the old and new value that we didn't
-    just match is a stop we went past without ever being detected near.
-  - last_position per vehicle: lat/lon/timestamp, so field 5 (direction)
-    has a previous point to compare the current one against.
-
-persists to data/observation_state.json between runs, same reasoning as
-everywhere else in this project - state has to survive across separate
-real invocations, not just live in memory for one script run.
-"""
+# observation state - the small bit of cross-cycle memory the field
+# checks actually need to make correct observations. NOT the
+# reconciliation ledger (streaks, frozen/manual-review flags,
+# whos-winning-per-field) - thats a phase 4 thing built on top of this.
+# this is just "what did we last see" so a single cycle isn't working
+# blind.
+#
+# two things get remembered:
+#   - last_matched_stop_sequence per trip: how far along the trip we've
+#     confidently matched so far. used by the matching search (only look
+#     ahead of here), and by the skip checker in agent/fields.py - any
+#     timepoint stop strictly between the old and new value that we
+#     didn't just match is a stop we went past without ever being
+#     detected near.
+#   - last_position per vehicle: lat/lon/timestamp, so field 5
+#     (direction) has a previous point to compare the current one
+#     against.
+#
+# persists to data/observation_state.json between runs, same reasoning as
+# everywhere else in this project - state has to survive across separate
+# real invocations, not just live in memory for one script run.
 
 import json
 

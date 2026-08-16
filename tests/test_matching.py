@@ -1,8 +1,6 @@
-"""
-tests for the nearest-stop matching logic. all synthetic coords, no
-network - the point is to pin down the matching behaviour (forward-only
-search, radius cutoff, lookahead cap) without needing a live bus.
-"""
+# tests for the nearest-stop matching logic. all synthetic coords, no
+# network - the point is to pin down the matching behaviour (forward-only
+# search, radius cutoff, lookahead cap) without needing a live bus.
 
 import sys
 from pathlib import Path

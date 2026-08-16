@@ -1,15 +1,13 @@
-"""
-phase 4 - the actual conflict-resolution policy. takes the six field
-observations from agent/fields.py and decides what to DO with each one:
-who wins, is it an anomaly, is it a data quality flag - and tracks
-whether a field has been in conflict long enough to freeze it and demand
-manual review (the chronic-conflict requirement from the brief).
-
-the meta-trigger (>3 fields disagreeing at once = SUSPECT) is checked
-FIRST, before any individual field gets resolved - a suspect observation
-doesn't get its fields resolved individually that cycle at all, its
-logged as its own distinct case instead. see reconcile_vehicle().
-"""
+# phase 4 - the actual conflict-resolution policy. takes the six field
+# observations from agent/fields.py and decides what to DO with each one:
+# who wins, is it an anomaly, is it a data quality flag - and tracks
+# whether a field has been in conflict long enough to freeze it and
+# demand manual review (the chronic-conflict requirement from the brief).
+#
+# the meta-trigger (>3 fields disagreeing at once = SUSPECT) is checked
+# FIRST, before any individual field gets resolved - a suspect observation
+# doesn't get its fields resolved individually that cycle at all, its
+# logged as its own distinct case instead. see reconcile_vehicle().
 
 from agent import config, fields, time_utils
 
@@ -19,8 +17,8 @@ DATA_QUALITY_FIELDS = {"direction", "start_time_date"}
 
 
 def reconcile_vehicle(vehicle, field_results, ledger, now):
-    """field_results is the list of 6 dicts from fields.check_vehicle().
-    returns {"suspect": bool, "reason": str|None, "resolutions": [...]}"""
+    # field_results is the list of 6 dicts from fields.check_vehicle().
+    # returns {"suspect": bool, "reason": str|None, "resolutions": [...]}
     ledger.mark_trip_seen(vehicle["trip_id"], now.isoformat())
 
     disagreeing = [r for r in field_results if r["disagreement"] is True]
@@ -42,11 +40,22 @@ def reconcile_vehicle(vehicle, field_results, ledger, now):
 
 
 def resolve_field(trip_id, field_result, ledger, now):
-    """applies the policy to one field's observation and updates the
-    ledger. this is the one place the chronic-conflict streak/freeze
-    logic lives - see the module docstring in agent/ledger.py for the
-    record shape."""
+    # applies the policy to one field's observation and updates the
+    # ledger. this is the one place the chronic-conflict streak/freeze
+    # logic lives - see the module comment in agent/ledger.py for the
+    # record shape.
+    #
+    # fields 1/2 carry a "source" tag - "confirmed" (a real stop match) or
+    # "estimated" (a speed-projected guess between stops, see
+    # agent/eta.py). fields without the concept (3-6) just default to
+    # "confirmed" here so their behaviour is unchanged. the rule: a clean
+    # ESTIMATED reading can still move the resolved value day to day when
+    # nothing's frozen, but it can never reset a conflict streak or clear
+    # a chronic-review freeze - only a real confirmed measurement earns
+    # that. a run of shaky estimates that happen to agree shouldn't be
+    # what clears a manual-review flag.
     field_name = field_result["field"]
+    source = field_result.get("source") or "confirmed"
     prior = ledger.get_field(trip_id, field_name)
     streak = prior["conflict_streak"] if prior else 0
     review_status = prior["review_status"] if prior else "NORMAL"
@@ -54,55 +63,72 @@ def resolve_field(trip_id, field_result, ledger, now):
     if field_result["disagreement"] is None:
         # nothing observed this cycle - leave everything exactly as it was
         if prior is None:
-            return _write(trip_id, field_name, None, "NO_OBSERVATION", "no observation this cycle", 0, "NORMAL", now, ledger)
+            return _write(trip_id, field_name, None, "NO_OBSERVATION", "no observation this cycle", 0, "NORMAL", now, ledger, None)
         return prior
 
-    new_streak = streak + 1 if field_result["disagreement"] else 0
+    can_reset = (not field_result["disagreement"]) and source == "confirmed"
+
+    if field_result["disagreement"]:
+        new_streak = streak + 1
+    elif can_reset:
+        new_streak = 0
+    else:
+        # clean, but only an ESTIMATE - doesn't earn a reset, doesn't add
+        # to the streak either, just sits neutral
+        new_streak = streak
 
     # just crossed the threshold this cycle -> enter review
     if field_result["disagreement"] and review_status == "NORMAL" and new_streak >= config.CHRONIC_CONFLICT_STREAK_THRESHOLD:
         review_status = "MANUAL_REVIEW_REQUIRED"
 
     if review_status == "MANUAL_REVIEW_REQUIRED":
-        if not field_result["disagreement"]:
-            # one clean cycle clears it - exact spec from the brief, not a
-            # streak of clean cycles like a stricter policy might use
+        if can_reset:
+            # one clean CONFIRMED cycle clears it - exact spec from the
+            # brief, not a streak of clean cycles like a stricter policy
+            # might use
             review_status = "NORMAL"
             new_streak = 0
             verdict, resolved_value, reason = _resolve_verdict(field_name, field_result)
-        else:
+        elif not field_result["disagreement"]:
             verdict = "WITHHELD_UNDER_REVIEW"
             resolved_value = prior["resolved_value"] if prior else None
             reason = (
-                f"in conflict {streak} consecutive cycles - frozen at last resolved value, still "
-                f"logging what's actually observed but not auto-updating ({field_result['detail']})"
+                f"clean, but only ESTIMATED - only a CONFIRMED match clears a freeze "
+                f"({streak} cycles in review). {field_result['detail']}"
             )
+        else:
+            verdict = "WITHHELD_UNDER_REVIEW"
+            resolved_value = prior["resolved_value"] if prior else None
+            reason = f"frozen at last resolved value ({streak} cycles in review). {field_result['detail']}"
     else:
         verdict, resolved_value, reason = _resolve_verdict(field_name, field_result)
 
-    return _write(trip_id, field_name, resolved_value, verdict, reason, new_streak, review_status, now, ledger)
+    return _write(trip_id, field_name, resolved_value, verdict, reason, new_streak, review_status, now, ledger, source)
 
 
 def _resolve_verdict(field_name, field_result):
+    # reason strings deliberately dont restate the verdict/policy category
+    # in words (e.g. "live wins by default...") - the verdict badge next
+    # to the reason already says that. just the actual observation here.
     if field_name in LIVE_WINS_FIELDS:
         if not field_result["disagreement"]:
             return "NO_CONFLICT", field_result["live_value"], field_result["detail"]
-        return "LIVE_WINS", field_result["live_value"], f"live wins by default for timing fields - {field_result['detail']}"
+        return "LIVE_WINS", field_result["live_value"], field_result["detail"]
 
     if field_name in ANOMALY_FIELDS:
         if not field_result["disagreement"]:
             return "NO_CONFLICT", None, field_result["detail"]
-        return "ANOMALY", field_result["live_value"], f"operational anomaly, not a value to resolve - {field_result['detail']}"
+        return "ANOMALY", field_result["live_value"], field_result["detail"]
 
     if field_name in DATA_QUALITY_FIELDS:
         if not field_result["disagreement"]:
             return "NO_CONFLICT", None, field_result["detail"]
-        return "DATA_QUALITY_FLAG", None, f"flagged on the observation, not resolved as a value - {field_result['detail']}"
+        return "DATA_QUALITY_FLAG", None, field_result["detail"]
 
     raise ValueError(f"unknown field: {field_name}")
 
 
-def _write(trip_id, field_name, resolved_value, verdict, reason, streak, review_status, now, ledger):
+def _write(trip_id, field_name, resolved_value, verdict, reason, streak, review_status, now, ledger, source):
     record = {
         "field": field_name,
         "resolved_value": resolved_value,
@@ -110,6 +136,7 @@ def _write(trip_id, field_name, resolved_value, verdict, reason, streak, review_
         "reason": reason,
         "conflict_streak": streak,
         "review_status": review_status,
+        "source": source,
         "updated_at": now.isoformat(),
     }
     ledger.set_field(trip_id, field_name, record)
@@ -117,13 +144,14 @@ def _write(trip_id, field_name, resolved_value, verdict, reason, streak, review_
 
 
 def check_for_cancellations(schedule, calendar, calendar_dates, ledger, now, today_date_str):
-    """cancellations don't fit the per-vehicle flow above - a cancelled
-    trip by definition never shows up live, so there's no vehicle
-    observation to hang the check off. instead this walks every trip
-    thats supposed to run today and flags any that are more than
-    CANCELLATION_GRACE_PERIOD_SECONDS past their scheduled start with no
-    live sighting ever, via the same resolve_field machinery (so a trip
-    that keeps being "never seen" run after run will chronic-freeze too)."""
+    # cancellations don't fit the per-vehicle flow above - a cancelled
+    # trip by definition never shows up live, so there's no vehicle
+    # observation to hang the check off. instead this walks every trip
+    # thats supposed to run today and flags any that are more than
+    # CANCELLATION_GRACE_PERIOD_SECONDS past their scheduled start with
+    # no live sighting ever, via the same resolve_field machinery (so a
+    # trip that keeps being "never seen" run after run will chronic-freeze
+    # too)
     results = []
     for trip_id, trip in schedule.items():
         if not trip["stops"]:

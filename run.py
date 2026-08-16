@@ -1,19 +1,18 @@
 #!/usr/bin/env python3
-"""
-one invocation of this script = one real reconciliation cycle for route
-263. fetches live + static, runs all six field checks per active
-vehicle, applies the phase 4 policy (who wins / anomaly / data quality
-flag / suspect / chronic-conflict freeze), and writes everything to the
-ledger + an append-only cycle log.
 
-theres no --cycles loop on purpose - state genuinely persists to disk
-between separate runs (data/ledger.json, data/observation_state.json),
-so two reconciliation cycles means running this twice with real time
-between, not looping inside one process. run it again in 15ish minutes
-during service hours to see it in action.
-
-    python run.py
-"""
+# one invocation of this script = one real reconciliation cycle for
+# route 263. fetches live + static, runs all six field checks per active
+# vehicle, applies the phase 4 policy (who wins / anomaly / data quality
+# flag / suspect / chronic-conflict freeze), and writes everything to the
+# ledger + an append-only cycle log.
+#
+# theres no --cycles loop on purpose - state genuinely persists to disk
+# between separate runs (data/ledger.json, data/observation_state.json),
+# so two reconciliation cycles means running this twice with real time
+# between, not looping inside one process. run it again in 15ish minutes
+# during service hours to see it in action.
+#
+#     python run.py
 
 import json
 import sys
@@ -34,9 +33,9 @@ SCHEDULE_WINDOW_AFTER = 4
 
 
 def _schedule_window(trip_stops, last_matched_stop_sequence, matched_stop_id):
-    """a handful of stops around wherever we last confirmed the bus was -
-    not the whole trip (some have 90+ stops), just enough to show the
-    schedule context the reconciliation is actually working against."""
+    # a handful of stops around wherever we last confirmed the bus was -
+    # not the whole trip (some have 90+ stops), just enough to show the
+    # schedule context the reconciliation is actually working against
     lo = max(0, last_matched_stop_sequence - SCHEDULE_WINDOW_BEFORE)
     hi = last_matched_stop_sequence + SCHEDULE_WINDOW_AFTER
     window = [s for s in trip_stops if lo <= s["stop_sequence"] <= hi]
@@ -113,17 +112,44 @@ HR = "-" * 70
 
 
 def _print_schedule_window(schedule_window):
-    """the handful of scheduled stops around wherever we last confirmed
-    this bus - not the whole trip, just the bit the reconciliation is
-    actually looking at right now."""
+    # the handful of scheduled stops around wherever we last confirmed
+    # this bus - not the whole trip, just the bit the reconciliation is
+    # actually looking at right now
     if not schedule_window:
         return
-    print("    nearby schedule:")
+    print("    schedule:")
     for s in schedule_window:
-        marker = "-> " if s["matched_this_cycle"] else "   "
-        tp = " (timepoint)" if s["timepoint"] else ""
-        print(f"    {marker}seq {s['stop_sequence']:<3} {s['stop_name']:<28} "
-              f"arr {s['arrival_time']}  dep {s['departure_time']}{tp}")
+        marker = "->" if s["matched_this_cycle"] else "  "
+        tp = "  (timepoint)" if s["timepoint"] else ""
+        # most stops have no scheduled dwell - arrival and departure are
+        # the same time, so showing both is just noise. only split them
+        # out when theres an actual difference to see.
+        if s["arrival_time"] == s["departure_time"]:
+            time_col = s["arrival_time"]
+        else:
+            time_col = f"{s['arrival_time']} -> {s['departure_time']}"
+        print(f"     {marker} {s['stop_sequence']:>2}  {s['stop_name']:<28} {time_col}{tp}")
+
+
+_VERDICT_BADGE = {
+    "LIVE_WINS": "LIVE WINS",
+    "ANOMALY": "ANOMALY",
+    "DATA_QUALITY_FLAG": "DATA QUALITY",
+    "WITHHELD_UNDER_REVIEW": "FROZEN (review)",
+}
+
+
+def _section(title):
+    print(f"\n{title}")
+    print(HR)
+
+
+def _print_field_line(r):
+    badge = _VERDICT_BADGE.get(r["verdict"], r["verdict"])
+    value = f"  =  {r['resolved_value']}" if r["resolved_value"] is not None else ""
+    source = f"  [{r['source']}]" if r.get("source") else ""
+    print(f"      {r['field']:<20} {badge:<16}{value}{source}")
+    print(f"        {r['reason']}")
 
 
 def print_report(summary, verbose=False):
@@ -138,54 +164,58 @@ def print_report(summary, verbose=False):
         1 for vr in normal for r in vr["outcome"]["resolutions"] if r["verdict"] == "WITHHELD_UNDER_REVIEW"
     )
 
-    print(f"\n{'=' * 70}")
-    print(f"  ROUTE 263 -- LIVE vs SCHEDULE, cycle at {ts}")
-    print(f"{'=' * 70}")
-    print(f"  {summary['vehicles_checked']} bus(es) checked  |  "
-          f"{len(suspects)} suspect  |  {flagged_count} field(s) flagged  |  "
-          f"{withheld_count} frozen (under review)  |  "
-          f"{len(summary['cancellations'])} possible cancellation(s)")
+    print()
+    print(HR)
+    print(f" ROUTE 263  --  live vs schedule  --  {ts}")
+    print(HR)
+    print(f" {summary['vehicles_checked']} bus{'es' if summary['vehicles_checked'] != 1 else ''} checked   "
+          f"{len(suspects)} suspect   {flagged_count} flagged   "
+          f"{withheld_count} frozen   {len(summary['cancellations'])} possible cancellation"
+          f"{'s' if len(summary['cancellations']) != 1 else ''}")
 
     if not summary["vehicles"]:
         print("\n  no active buses matched to a known trip this cycle - try again during service hours")
 
     if suspects:
-        print(f"\n{HR}\n  SUSPECT -- quarantined, not resolved field-by-field this cycle\n{HR}")
+        _section(" SUSPECT  (quarantined - not resolved field-by-field this cycle)")
         for vr in suspects:
-            print(f"\n  bus {vr['vehicle_id']}  ->  {vr['trip_headsign']}  @ ({vr['lat']:.4f}, {vr['lon']:.4f})")
-            print(f"    {vr['outcome']['reason']}")
+            print(f"\n  {vr['vehicle_id']}  ->  {vr['trip_headsign']}   @ {vr['lat']:.4f}, {vr['lon']:.4f}")
+            print(f"      {vr['outcome']['reason']}")
             _print_schedule_window(vr["schedule_window"])
 
     if normal:
-        print(f"\n{HR}\n  ACTIVE BUSES\n{HR}")
+        _section(" ACTIVE BUSES")
         for vr in normal:
             notable = [r for r in vr["outcome"]["resolutions"] if r["verdict"] not in ROUTINE_VERDICTS]
             routine = len(vr["outcome"]["resolutions"]) - len(notable)
 
-            print(f"\n  bus {vr['vehicle_id']}  ->  {vr['trip_headsign']}  @ ({vr['lat']:.4f}, {vr['lon']:.4f})")
+            print(f"\n  {vr['vehicle_id']}  ->  {vr['trip_headsign']}   @ {vr['lat']:.4f}, {vr['lon']:.4f}")
             _print_schedule_window(vr["schedule_window"])
+            print()
+
             if not notable:
-                print(f"    all {routine} field(s) routine (no conflict / nothing observed this cycle)")
-            for r in notable:
-                value_note = f"  [resolved: {r['resolved_value']}]" if r["resolved_value"] is not None else ""
-                print(f"    {r['field']:<22} {r['verdict']:<20}{value_note}")
-                print(f"      {r['reason']}")
-            if notable and routine:
-                print(f"    (+ {routine} other field(s) routine this cycle)")
+                print(f"      all clear  ({routine} field(s) routine this cycle)")
+            else:
+                for r in notable:
+                    _print_field_line(r)
+                if routine:
+                    print(f"      + {routine} other field(s) routine this cycle")
 
             if verbose:
-                print("    -- full field dump --")
+                print("      -- full field dump --")
                 for r in vr["outcome"]["resolutions"]:
-                    print(f"    {r['field']:<22} {r['verdict']:<20} {r['reason']}")
+                    _print_field_line(r)
 
     if summary["cancellations"]:
-        print(f"\n{HR}\n  POSSIBLE CANCELLATIONS -- scheduled, never seen live, past grace period\n{HR}")
+        _section(" POSSIBLE CANCELLATIONS  (scheduled, never seen live, past grace period)")
         for c in summary["cancellations"]:
-            print(f"  trip {c['trip_id'][:16]}...  {c['record']['reason']}")
+            print(f"  {c['trip_id'][:16]}...   {c['record']['reason']}")
 
-    print(f"\n{'=' * 70}")
-    print("  run again in ~15 min for the next real cycle -- state is real,")
-    print("  persisted to data/ledger.json, not a lookup table.")
+    print()
+    print(HR)
+    print(" run again in ~15 min for the next real cycle -- state is real,")
+    print(" persisted to data/ledger.json, not a lookup table.")
+    print(HR)
 
 
 if __name__ == "__main__":

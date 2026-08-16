@@ -1,12 +1,10 @@
-"""
-phase 3 - run the disagreement checker against whatever's live on route
-263 right now, for every field, for every vehicle. this is detection
-only, no winner picked yet - just "here's what we observed live, here's
-what the schedule says, do they disagree".
-
-run from repo root:
-    python scripts/check_disagreements.py
-"""
+# phase 3 - run the disagreement checker against whatever's live on
+# route 263 right now, for every field, for every vehicle. this is
+# detection only, no winner picked yet - just "here's what we observed
+# live, here's what the schedule says, do they disagree".
+#
+# run from repo root:
+#     python scripts/check_disagreements.py
 
 import sys
 from pathlib import Path

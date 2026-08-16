@@ -1,20 +1,18 @@
-"""
-the reconciled state ledger - this is the actual "what do we currently
-believe is true, and why" store the brief asks for (a state that can be
-queried and explained). different from agent/state.py's ObservationState,
-which only tracks what the matching logic needs to make correct
-observations in the first place. this is downstream of that - it holds
-policy OUTCOMES: resolved values, verdicts, conflict streaks,
-manual-review flags.
-
-one record per (trip_id, field_name), plus a small trip_first_seen map
-used for field 4's cancellation check (has this scheduled trip ever
-actually shown up live).
-
-persists to data/ledger.json between runs - same reasoning as everywhere
-else, state has to survive across separate real invocations for the
-chronic-conflict streaks to mean anything.
-"""
+# the reconciled state ledger - this is the actual "what do we currently
+# believe is true, and why" store the brief asks for (a state that can be
+# queried and explained). different from agent/state.py's ObservationState,
+# which only tracks what the matching logic needs to make correct
+# observations in the first place. this is downstream of that - it holds
+# policy OUTCOMES: resolved values, verdicts, conflict streaks,
+# manual-review flags.
+#
+# one record per (trip_id, field_name), plus a small trip_first_seen map
+# used for field 4's cancellation check (has this scheduled trip ever
+# actually shown up live).
+#
+# persists to data/ledger.json between runs - same reasoning as everywhere
+# else, state has to survive across separate real invocations for the
+# chronic-conflict streaks to mean anything.
 
 import json
 

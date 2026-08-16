@@ -1,7 +1,5 @@
-"""
-tests for the six field checks. all synthetic data, no network - these
-pin down the DETECTION logic (agent/fields.py), not the live sources.
-"""
+# tests for the six field checks. all synthetic data, no network - these
+# pin down the DETECTION logic (agent/fields.py), not the live sources.
 
 import sys
 from pathlib import Path

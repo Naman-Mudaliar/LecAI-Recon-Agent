@@ -1,14 +1,13 @@
-"""
-phase 2 - pull the schedule for route 263 and match live vehicles against
-it using the nearest-stop approach (agent/matching.py). this is a one-shot
-demo, not the real reconciliation cycle yet - no ledger, no persisted
-"last matched stop" memory between runs, that comes in phase 3/4. for now
-we just match against stop_sequence > -1 (i.e. any stop on the trip) to
-prove the matching logic itself works against real live data.
-
-run from repo root:
-    python scripts/match_live_to_schedule.py
-"""
+# phase 2 - pull the schedule for route 263 and match live vehicles
+# against it using the nearest-stop approach (agent/matching.py). this is
+# a one-shot demo, not the real reconciliation cycle yet - no ledger, no
+# persisted "last matched stop" memory between runs, that comes in phase
+# 3/4. for now we just match against stop_sequence > -1 (i.e. any stop on
+# the trip) to prove the matching logic itself works against real live
+# data.
+#
+# run from repo root:
+#     python scripts/match_live_to_schedule.py
 
 import sys
 from pathlib import Path
