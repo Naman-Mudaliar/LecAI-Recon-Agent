@@ -35,17 +35,27 @@ def check_vehicle(vehicle, trip, calendar, calendar_dates, state):
 
     last_position = state.get_vehicle_last_position(vehicle["vehicle_id"])
 
-    # no confirmed stop match this cycle -> try a speed-based estimate
-    # instead, so fields 1/2 arent just "no observation" every cycle the
-    # bus happens to be between stops. still None if we cant trust one.
-    estimate = None
-    if matched_stop is None:
-        next_stop, predicted_arrival_epoch, detail = eta.estimate_next_stop_delay(
-            trip["stops"], prior_last_matched, vehicle["lat"], vehicle["lon"],
-            vehicle["timestamp"], last_position, vehicle["start_date"],
-        )
-        if next_stop is not None:
-            estimate = (next_stop, predicted_arrival_epoch, detail)
+    # whatever's next on the schedule from wherever we are now - a plain
+    # lookup, always known if the trip has a stop left, regardless of
+    # whether we can actually trust an eta to it yet (that needs two real
+    # gps fixes and a sane speed, see agent/eta.py - "no next stop" and
+    # "cant trust an estimate to the next stop" are different things and
+    # eta.estimate_next_stop_delay deliberately conflates them into one
+    # None for the fields 1/2 fallback below, so this is looked up
+    # separately purely for display, "whats the next stop" shouldnt depend
+    # on whether an estimate was trustworthy)
+    next_stop = next((s for s in trip["stops"] if s["stop_sequence"] > new_last_matched), None)
+
+    # eta to that stop - this is the same projection fields 1/2 use as a
+    # fallback when theres no confirmed match this cycle (new_last_matched
+    # == prior_last_matched in that case, so its literally the same call),
+    # but its now always run so it can be shown for display too regardless
+    # of whether this cycle's match was confirmed
+    eta_next_stop, predicted_arrival_epoch, eta_detail = eta.estimate_next_stop_delay(
+        trip["stops"], new_last_matched, vehicle["lat"], vehicle["lon"],
+        vehicle["timestamp"], last_position, vehicle["start_date"],
+    )
+    estimate = (eta_next_stop, predicted_arrival_epoch, eta_detail) if (matched_stop is None and eta_next_stop is not None) else None
 
     results = [
         check_arrival_timing(vehicle, matched_stop, estimate),
@@ -65,6 +75,9 @@ def check_vehicle(vehicle, trip, calendar, calendar_dates, state):
         "matched_stop": matched_stop,
         "matched_this_cycle": matched_stop is not None,
         "last_matched_stop_sequence": new_last_matched,
+        "next_stop": next_stop,
+        "next_stop_eta_epoch": predicted_arrival_epoch if eta_next_stop is not None else None,
+        "next_stop_eta_detail": eta_detail,
     }
 
 

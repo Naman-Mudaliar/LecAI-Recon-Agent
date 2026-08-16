@@ -90,6 +90,7 @@ def run_cycle():
         outcome = policy.reconcile_vehicle(v, check["field_results"], ledger, now)
 
         matched_stop_id = check["matched_stop"]["stop_id"] if check["matched_stop"] else None
+        next_stop = check["next_stop"]
         vehicle_reports.append({
             "vehicle_id": v["vehicle_id"],
             "trip_id": v["trip_id"],
@@ -97,6 +98,10 @@ def run_cycle():
             "lat": v["lat"],
             "lon": v["lon"],
             "matched_this_cycle": check["matched_this_cycle"],
+            "next_stop_name": next_stop["stop_name"] if next_stop else None,
+            "next_stop_scheduled": next_stop["arrival_time"] if next_stop else None,
+            "next_stop_eta_epoch": check["next_stop_eta_epoch"],
+            "next_stop_eta_detail": check["next_stop_eta_detail"],
             "schedule_window": _schedule_window(trip["stops"], check["last_matched_stop_sequence"], matched_stop_id),
             "field_results": check["field_results"],
             "outcome": outcome,
@@ -167,6 +172,63 @@ def _section(title):
     print(HR)
 
 
+def _format_eta(predicted_epoch, now_epoch):
+    # turns the raw predicted arrival epoch from agent/eta.py into
+    # something a person can actually read at a glance
+    if predicted_epoch is None:
+        return None
+    remaining = predicted_epoch - now_epoch
+    if remaining < 0:
+        return "due (or just passed)"
+    mins, secs = divmod(int(round(remaining)), 60)
+    return f"~{mins}m {secs:02d}s"
+
+
+def _print_bus_block(vr, now_epoch, ts, verbose):
+    # leads with the thing a rider (or a reviewer) actually wants first -
+    # which bus, where its actually headed vs whats immediately next, and
+    # when it'll get there. schedule detail moves to --verbose only.
+    # current time gets repeated on every bus so each block reads on its
+    # own - "eta ~4m" only means something next to the moment it was
+    # computed against, and this report gets read one bus at a time, not
+    # top to bottom in one sitting
+    print(f"\n  [{ts}]")
+    print(f"  bus {vr['vehicle_id']}  ->  {vr['trip_headsign']}  (final destination)   @ {vr['lat']:.4f}, {vr['lon']:.4f}")
+    if vr["next_stop_name"]:
+        eta_str = _format_eta(vr["next_stop_eta_epoch"], now_epoch)
+        eta_part = f"   eta {eta_str}" if eta_str else f"   eta: {vr['next_stop_eta_detail']}"
+        print(f"      next stop   :  {vr['next_stop_name']}  (scheduled {vr['next_stop_scheduled']}){eta_part}")
+    else:
+        print("      next stop   :  none left on this trip")
+    if verbose:
+        _print_schedule_window(vr["schedule_window"])
+
+
+def _recon_steps(r):
+    # the forward-looking half of the report - not just "here's the state"
+    # but "here's exactly what has to happen for the agent to consider this
+    # cleared", read straight off the same streak/threshold the policy
+    # itself uses (agent/policy.py + agent/config.py), not made up for
+    # display
+    verdict = r["verdict"]
+    streak = r["conflict_streak"]
+    threshold = config.CHRONIC_CONFLICT_STREAK_THRESHOLD
+
+    if verdict == "WITHHELD_UNDER_REVIEW":
+        return (f"frozen after {streak} consecutive conflicts - clears in exactly 1 clean CONFIRMED "
+                f"cycle (a clean ESTIMATED cycle alone cant clear it)")
+
+    if verdict in ("LIVE_WINS", "ANOMALY", "DATA_QUALITY_FLAG"):
+        remaining = threshold - streak
+        if remaining <= 0:
+            return f"{streak}/{threshold} consecutive conflicts - next disagreeing cycle freezes this into MANUAL_REVIEW"
+        plural = "cycle" if remaining == 1 else "cycles"
+        return (f"{streak}/{threshold} consecutive conflicts so far - {remaining} more disagreeing {plural} "
+                f"before this freezes; one clean cycle clears it back to normal right now")
+
+    return None
+
+
 def _print_field_line(r):
     print(f"      {r['field']}")
     if r["verdict"] == "NO_OBSERVATION":
@@ -182,10 +244,14 @@ def _print_field_line(r):
     resolved = f"  ->  resolved as {r['resolved_value']}" if r["resolved_value"] is not None else ""
     print(f"        conflict  :  {conflict}   ({badge}){resolved}{source}")
     print(f"        {r['reason']}")
+    if conflict == "yes":
+        print(f"        to clear  :  {_recon_steps(r)}")
 
 
 def print_report(summary, verbose=False):
-    ts = time_utils.format_london(datetime.fromisoformat(summary["timestamp"]))
+    now_dt = datetime.fromisoformat(summary["timestamp"])
+    now_epoch = now_dt.timestamp()
+    ts = time_utils.format_london(now_dt)
     suspects = [vr for vr in summary["vehicles"] if vr["outcome"]["suspect"]]
     normal = [vr for vr in summary["vehicles"] if not vr["outcome"]["suspect"]]
 
@@ -212,27 +278,27 @@ def print_report(summary, verbose=False):
     if suspects:
         _section(" SUSPECT  (quarantined - not resolved field-by-field this cycle)")
         for vr in suspects:
-            print(f"\n  {vr['vehicle_id']}  ->  {vr['trip_headsign']}   @ {vr['lat']:.4f}, {vr['lon']:.4f}")
+            _print_bus_block(vr, now_epoch, ts, verbose)
             print(f"      {vr['outcome']['reason']}")
-            _print_schedule_window(vr["schedule_window"])
+            print("      to clear  :  quarantined this cycle only - resolves field-by-field again "
+                  "once 3 or fewer of 6 fields disagree in a future cycle")
 
     if normal:
-        _section(" ACTIVE BUSES")
+        _section(" ACTIVE BUSES  (bus -> next stop vs destination -> eta -> conflicts, if any)")
         for vr in normal:
             notable = [r for r in vr["outcome"]["resolutions"] if r["verdict"] not in ROUTINE_VERDICTS]
             routine = len(vr["outcome"]["resolutions"]) - len(notable)
 
-            print(f"\n  {vr['vehicle_id']}  ->  {vr['trip_headsign']}   @ {vr['lat']:.4f}, {vr['lon']:.4f}")
-            _print_schedule_window(vr["schedule_window"])
-            print()
+            _print_bus_block(vr, now_epoch, ts, verbose)
 
             if not notable:
-                print(f"      all clear  ({routine} field(s) routine this cycle)")
+                print(f"      no conflicts this cycle  ({routine} field(s) clear)")
             else:
+                print("      conflicts this cycle:")
                 for r in notable:
                     _print_field_line(r)
                 if routine:
-                    print(f"      + {routine} other field(s) routine this cycle")
+                    print(f"      + {routine} other field(s) clear this cycle")
 
             if verbose:
                 print("      -- full field dump --")
