@@ -21,12 +21,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from agent import config, fields, policy, time_utils
+from agent import config, fields, pdf_report, policy, time_utils
 from agent.ledger import Ledger
 from agent.sources import live_source, static_source
 from agent.state import ObservationState
 
 CYCLE_LOG_PATH = config.DATA_DIR / "cycle_history.jsonl"
+REPORTS_DIR = config.DATA_DIR.parent / "reports"
 
 SCHEDULE_WINDOW_BEFORE = 1
 SCHEDULE_WINDOW_AFTER = 4
@@ -172,18 +173,6 @@ def _section(title):
     print(HR)
 
 
-def _format_eta(predicted_epoch, now_epoch):
-    # turns the raw predicted arrival epoch from agent/eta.py into
-    # something a person can actually read at a glance
-    if predicted_epoch is None:
-        return None
-    remaining = predicted_epoch - now_epoch
-    if remaining < 0:
-        return "due (or just passed)"
-    mins, secs = divmod(int(round(remaining)), 60)
-    return f"~{mins}m {secs:02d}s"
-
-
 def _print_bus_block(vr, now_epoch, ts, verbose):
     # leads with the thing a rider (or a reviewer) actually wants first -
     # which bus, where its actually headed vs whats immediately next, and
@@ -195,38 +184,13 @@ def _print_bus_block(vr, now_epoch, ts, verbose):
     print(f"\n  [{ts}]")
     print(f"  bus {vr['vehicle_id']}  ->  {vr['trip_headsign']}  (final destination)   @ {vr['lat']:.4f}, {vr['lon']:.4f}")
     if vr["next_stop_name"]:
-        eta_str = _format_eta(vr["next_stop_eta_epoch"], now_epoch)
+        eta_str = time_utils.format_eta(vr["next_stop_eta_epoch"], now_epoch)
         eta_part = f"   eta {eta_str}" if eta_str else f"   eta: {vr['next_stop_eta_detail']}"
         print(f"      next stop   :  {vr['next_stop_name']}  (scheduled {vr['next_stop_scheduled']}){eta_part}")
     else:
         print("      next stop   :  none left on this trip")
     if verbose:
         _print_schedule_window(vr["schedule_window"])
-
-
-def _recon_steps(r):
-    # the forward-looking half of the report - not just "here's the state"
-    # but "here's exactly what has to happen for the agent to consider this
-    # cleared", read straight off the same streak/threshold the policy
-    # itself uses (agent/policy.py + agent/config.py), not made up for
-    # display
-    verdict = r["verdict"]
-    streak = r["conflict_streak"]
-    threshold = config.CHRONIC_CONFLICT_STREAK_THRESHOLD
-
-    if verdict == "WITHHELD_UNDER_REVIEW":
-        return (f"frozen after {streak} consecutive conflicts - clears in exactly 1 clean CONFIRMED "
-                f"cycle (a clean ESTIMATED cycle alone cant clear it)")
-
-    if verdict in ("LIVE_WINS", "ANOMALY", "DATA_QUALITY_FLAG"):
-        remaining = threshold - streak
-        if remaining <= 0:
-            return f"{streak}/{threshold} consecutive conflicts - next disagreeing cycle freezes this into MANUAL_REVIEW"
-        plural = "cycle" if remaining == 1 else "cycles"
-        return (f"{streak}/{threshold} consecutive conflicts so far - {remaining} more disagreeing {plural} "
-                f"before this freezes; one clean cycle clears it back to normal right now")
-
-    return None
 
 
 def _print_field_line(r):
@@ -245,7 +209,7 @@ def _print_field_line(r):
     print(f"        conflict  :  {conflict}   ({badge}){resolved}{source}")
     print(f"        {r['reason']}")
     if conflict == "yes":
-        print(f"        to clear  :  {_recon_steps(r)}")
+        print(f"        to clear  :  {policy.recon_steps(r)}")
 
 
 def print_report(summary, verbose=False):
@@ -331,3 +295,8 @@ if __name__ == "__main__":
 
     summary = run_cycle()
     print_report(summary, verbose=args.verbose)
+
+    if pdf_report.has_anything_to_report(summary):
+        stamp = datetime.fromisoformat(summary["timestamp"]).strftime("%Y%m%d_%H%M%S")
+        pdf_path = pdf_report.generate(summary, REPORTS_DIR / f"conflicts_{stamp}.pdf")
+        print(f"\n conflicts from this cycle saved to {pdf_path}")

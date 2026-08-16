@@ -18,3 +18,8 @@ data/*.jsonl
 # once we've got a real multi-cycle run recorded for the demo, the
 # ledger + cycle log for THAT run get force-added as submission evidence
 # (see README) - this blanket ignore is just for day to day dev/testing
+
+# one pdf gets generated per cycle that actually had a conflict - same
+# deal, day to day dev noise, force-add the real ones from the recorded
+# demo run same as the ledger/cycle log above
+reports/

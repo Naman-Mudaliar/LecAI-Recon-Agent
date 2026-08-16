@@ -161,6 +161,32 @@ def _write(trip_id, field_name, resolved_value, verdict, reason, streak, review_
     return record
 
 
+def recon_steps(field_record):
+    # the forward-looking half of a field's story - not just "here's the
+    # state" but "here's exactly what has to happen for the agent to
+    # consider this cleared", read straight off the same streak/threshold
+    # the policy itself just used above, not re-derived for display. lives
+    # here (not in run.py) so the terminal report and the pdf report both
+    # call the one real version instead of two copies that could drift
+    verdict = field_record["verdict"]
+    streak = field_record["conflict_streak"]
+    threshold = config.CHRONIC_CONFLICT_STREAK_THRESHOLD
+
+    if verdict == "WITHHELD_UNDER_REVIEW":
+        return (f"frozen after {streak} consecutive conflicts - clears in exactly 1 clean CONFIRMED "
+                f"cycle (a clean ESTIMATED cycle alone cant clear it)")
+
+    if verdict in ("LIVE_WINS", "ANOMALY", "DATA_QUALITY_FLAG"):
+        remaining = threshold - streak
+        if remaining <= 0:
+            return f"{streak}/{threshold} consecutive conflicts - next disagreeing cycle freezes this into MANUAL_REVIEW"
+        plural = "cycle" if remaining == 1 else "cycles"
+        return (f"{streak}/{threshold} consecutive conflicts so far - {remaining} more disagreeing {plural} "
+                f"before this freezes; one clean cycle clears it back to normal right now")
+
+    return None
+
+
 def check_for_cancellations(schedule, calendar, calendar_dates, ledger, now, today_date_str):
     # cancellations don't fit the per-vehicle flow above - a cancelled
     # trip by definition never shows up live, so there's no vehicle

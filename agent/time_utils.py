@@ -15,6 +15,19 @@ from zoneinfo import ZoneInfo
 LONDON = ZoneInfo("Europe/London")
 
 
+def format_eta(predicted_epoch, now_epoch):
+    # turns a raw predicted arrival epoch (agent/eta.py) into something a
+    # person can read at a glance - shared by the terminal report and the
+    # pdf report so they never show two different numbers for the same eta
+    if predicted_epoch is None:
+        return None
+    remaining = predicted_epoch - now_epoch
+    if remaining < 0:
+        return "due (or just passed)"
+    mins, secs = divmod(int(round(remaining)), 60)
+    return f"~{mins}m {secs:02d}s"
+
+
 def format_london(dt):
     # takes a tz-aware datetime (anything, usually utc) and formats it as
     # local Europe/London time - tzname() gives us "BST" or "GMT" for free
