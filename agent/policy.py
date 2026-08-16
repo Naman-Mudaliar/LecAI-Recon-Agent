@@ -4,6 +4,13 @@
 # whether a field has been in conflict long enough to freeze it and
 # demand manual review (the chronic-conflict requirement from the brief).
 #
+# fields 1/2 (LIVE_WINS_FIELDS) arent a flat "live always wins" - its
+# margin based. within MIN_DELAY_SECONDS_TO_LOG of the scheduled time,
+# the timetable is still accurate enough that we keep the warehouse's
+# clean value (verdict ON_SCHEDULE). only past that margin does live's
+# own reading actually take over (verdict LIVE_WINS). see
+# _resolve_verdict for where that split happens.
+#
 # the meta-trigger (>3 fields disagreeing at once = SUSPECT) is checked
 # FIRST, before any individual field gets resolved - a suspect observation
 # doesn't get its fields resolved individually that cycle at all, its
@@ -63,7 +70,7 @@ def resolve_field(trip_id, field_result, ledger, now):
     if field_result["disagreement"] is None:
         # nothing observed this cycle - leave everything exactly as it was
         if prior is None:
-            return _write(trip_id, field_name, None, "NO_OBSERVATION", "no observation this cycle", 0, "NORMAL", now, ledger, None)
+            return _write(trip_id, field_name, None, "NO_OBSERVATION", "no observation this cycle", 0, "NORMAL", now, ledger, None, None, None)
         return prior
 
     can_reset = (not field_result["disagreement"]) and source == "confirmed"
@@ -103,7 +110,10 @@ def resolve_field(trip_id, field_result, ledger, now):
     else:
         verdict, resolved_value, reason = _resolve_verdict(field_name, field_result)
 
-    return _write(trip_id, field_name, resolved_value, verdict, reason, new_streak, review_status, now, ledger, source)
+    return _write(
+        trip_id, field_name, resolved_value, verdict, reason, new_streak, review_status, now, ledger, source,
+        field_result["live_value"], field_result["warehouse_value"],
+    )
 
 
 def _resolve_verdict(field_name, field_result):
@@ -112,7 +122,13 @@ def _resolve_verdict(field_name, field_result):
     # to the reason already says that. just the actual observation here.
     if field_name in LIVE_WINS_FIELDS:
         if not field_result["disagreement"]:
-            return "NO_CONFLICT", field_result["live_value"], field_result["detail"]
+            # within the margin of error (MIN_DELAY_SECONDS_TO_LOG) -
+            # live and warehouse are close enough that the timetable is
+            # still a good description of reality, so we keep the clean
+            # scheduled value instead of a jittery live one. this is a
+            # real decision, not a no-op - just one that lands on the
+            # warehouse's side instead of live's.
+            return "ON_SCHEDULE", field_result["warehouse_value"], field_result["detail"]
         return "LIVE_WINS", field_result["live_value"], field_result["detail"]
 
     if field_name in ANOMALY_FIELDS:
@@ -128,9 +144,11 @@ def _resolve_verdict(field_name, field_result):
     raise ValueError(f"unknown field: {field_name}")
 
 
-def _write(trip_id, field_name, resolved_value, verdict, reason, streak, review_status, now, ledger, source):
+def _write(trip_id, field_name, resolved_value, verdict, reason, streak, review_status, now, ledger, source, live_value, warehouse_value):
     record = {
         "field": field_name,
+        "live_value": live_value,
+        "warehouse_value": warehouse_value,
         "resolved_value": resolved_value,
         "verdict": verdict,
         "reason": reason,

@@ -21,7 +21,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from agent import config, fields, policy
+from agent import config, fields, policy, time_utils
 from agent.ledger import Ledger
 from agent.sources import live_source, static_source
 from agent.state import ObservationState
@@ -106,7 +106,7 @@ def run_cycle():
 
 # verdicts that arent worth printing on their own every single time -
 # "nothing happened" shouldnt take up as much room as "something happened"
-ROUTINE_VERDICTS = {"NO_OBSERVATION", "NO_CONFLICT"}
+ROUTINE_VERDICTS = {"NO_OBSERVATION", "NO_CONFLICT", "ON_SCHEDULE"}
 
 HR = "-" * 70
 
@@ -133,10 +133,16 @@ def _print_schedule_window(schedule_window):
 
 _VERDICT_BADGE = {
     "LIVE_WINS": "LIVE WINS",
+    "ON_SCHEDULE": "ON SCHEDULE",
     "ANOMALY": "ANOMALY",
     "DATA_QUALITY_FLAG": "DATA QUALITY",
     "WITHHELD_UNDER_REVIEW": "FROZEN (review)",
 }
+
+# these are the verdicts that mean live and warehouse actually disagreed
+# this cycle - everything else (no observation, no conflict, on schedule)
+# is the two sources agreeing, or nothing to compare yet
+_CONFLICT_VERDICTS = {"LIVE_WINS", "ANOMALY", "DATA_QUALITY_FLAG", "WITHHELD_UNDER_REVIEW"}
 
 
 def _section(title):
@@ -145,15 +151,24 @@ def _section(title):
 
 
 def _print_field_line(r):
+    print(f"      {r['field']}")
+    if r["verdict"] == "NO_OBSERVATION":
+        print("        no observation this cycle")
+        return
+
     badge = _VERDICT_BADGE.get(r["verdict"], r["verdict"])
-    value = f"  =  {r['resolved_value']}" if r["resolved_value"] is not None else ""
+    conflict = "yes" if r["verdict"] in _CONFLICT_VERDICTS else "no"
     source = f"  [{r['source']}]" if r.get("source") else ""
-    print(f"      {r['field']:<20} {badge:<16}{value}{source}")
+
+    print(f"        live feed :  {r['live_value']}")
+    print(f"        warehouse :  {r['warehouse_value']}")
+    resolved = f"  ->  resolved as {r['resolved_value']}" if r["resolved_value"] is not None else ""
+    print(f"        conflict  :  {conflict}   ({badge}){resolved}{source}")
     print(f"        {r['reason']}")
 
 
 def print_report(summary, verbose=False):
-    ts = summary["timestamp"].replace("T", " ")[:19] + " UTC"
+    ts = time_utils.format_london(datetime.fromisoformat(summary["timestamp"]))
     suspects = [vr for vr in summary["vehicles"] if vr["outcome"]["suspect"]]
     normal = [vr for vr in summary["vehicles"] if not vr["outcome"]["suspect"]]
 

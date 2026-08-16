@@ -91,6 +91,13 @@ MIN_DELAY_SECONDS_TO_LOG = 60
 # but its still a single position ping, not a precise operator
 # measurement, so treating anything under a minute as noise rather than
 # a real conflict seems fair.
+#
+# this is also the margin of error for who actually wins fields 1/2 (see
+# agent/policy.py _resolve_verdict) - within a minute either way, the
+# timetable is still a perfectly good description of reality so we keep
+# the warehouse's clean scheduled value instead of a jittery live one.
+# only past this margin does live's own reading become more trustworthy
+# than the schedule, which is when it actually takes over.
 
 # --- field 3: per-stop adherence --------------------------------------------
 

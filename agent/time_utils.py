@@ -15,6 +15,14 @@ from zoneinfo import ZoneInfo
 LONDON = ZoneInfo("Europe/London")
 
 
+def format_london(dt):
+    # takes a tz-aware datetime (anything, usually utc) and formats it as
+    # local Europe/London time - tzname() gives us "BST" or "GMT" for free
+    # depending on the time of year, so we dont have to hardcode either one
+    local = dt.astimezone(LONDON)
+    return local.strftime("%Y-%m-%d %H:%M:%S") + " " + local.tzname()
+
+
 def gtfs_time_to_epoch(service_date, gtfs_time):
     # service_date like '20260815', gtfs_time like '19:41:00' (can be
     # >24:00:00). returns unix epoch seconds (int)

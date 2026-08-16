@@ -33,10 +33,15 @@ def test_live_wins_field_resolves_to_live_value_on_disagreement():
     assert result["resolved_value"] == "+90s"
 
 
-def test_live_wins_field_no_conflict_when_within_threshold():
+def test_live_wins_field_uses_warehouse_value_when_within_margin():
+    # within the margin of error, the timetable's clean scheduled value
+    # is kept as the resolved value - not live's slightly-jittery one,
+    # even though live is technically what was observed
     ledger = fresh_ledger()
-    result = policy.resolve_field("T1", make_result("arrival_timing", False), ledger, NOW)
-    assert result["verdict"] == "NO_CONFLICT"
+    r = make_result("arrival_timing", False, live_value="+12s", warehouse_value="19:41:00")
+    result = policy.resolve_field("T1", r, ledger, NOW)
+    assert result["verdict"] == "ON_SCHEDULE"
+    assert result["resolved_value"] == "19:41:00"
 
 
 def test_anomaly_field_flags_but_doesnt_pick_a_winner():
@@ -112,11 +117,12 @@ def test_one_clean_cycle_clears_manual_review():
     assert ledger.get_field("T1", "arrival_timing")["review_status"] == "MANUAL_REVIEW_REQUIRED"
 
     # a single clean cycle - not two, not three - clears it per the brief's exact spec
-    result = policy.resolve_field("T1", make_result("arrival_timing", False, live_value="+5s"), ledger, NOW)
+    r = make_result("arrival_timing", False, live_value="+5s", warehouse_value="19:41:00")
+    result = policy.resolve_field("T1", r, ledger, NOW)
     assert result["review_status"] == "NORMAL"
     assert result["conflict_streak"] == 0
-    assert result["verdict"] == "NO_CONFLICT"
-    assert result["resolved_value"] == "+5s"  # resumed auto-resolving immediately
+    assert result["verdict"] == "ON_SCHEDULE"
+    assert result["resolved_value"] == "19:41:00"  # resumed auto-resolving immediately, warehouse value since within margin
 
 
 # --- suspect meta-trigger --------------------------------------------------
@@ -239,11 +245,12 @@ def test_clean_confirmed_cycle_clears_review_even_after_estimated_history():
         r["source"] = "estimated"
         policy.resolve_field("T1", r, ledger, NOW)
 
-    clean_confirmed = make_result("arrival_timing", False, live_value="+5s")
+    clean_confirmed = make_result("arrival_timing", False, live_value="+5s", warehouse_value="19:41:00")
     clean_confirmed["source"] = "confirmed"
     result = policy.resolve_field("T1", clean_confirmed, ledger, NOW)
     assert result["review_status"] == "NORMAL"
-    assert result["verdict"] == "NO_CONFLICT"
+    assert result["verdict"] == "ON_SCHEDULE"
+    assert result["resolved_value"] == "19:41:00"
 
 
 def test_clean_estimate_while_normal_does_not_reset_an_existing_streak():
@@ -252,11 +259,12 @@ def test_clean_estimate_while_normal_does_not_reset_an_existing_streak():
     r["source"] = "estimated"
     policy.resolve_field("T1", r, ledger, NOW)  # streak -> 1
 
-    clean_estimate = make_result("arrival_timing", False, live_value="~+5s")
+    clean_estimate = make_result("arrival_timing", False, live_value="~+5s", warehouse_value="19:41:00")
     clean_estimate["source"] = "estimated"
     result = policy.resolve_field("T1", clean_estimate, ledger, NOW)
     assert result["conflict_streak"] == 1  # unchanged, not reset to 0
-    assert result["verdict"] == "NO_CONFLICT"  # still resolves normally though
+    assert result["verdict"] == "ON_SCHEDULE"  # still resolves normally though, just lands on the warehouse's side
+    assert result["resolved_value"] == "19:41:00"
 
 
 def test_fields_without_a_source_key_behave_as_before():
