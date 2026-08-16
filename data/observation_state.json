@@ -1,0 +1,32 @@
+{
+  "trips": {
+    "VJ79f91da6e4bc197f85eb32cbc6b61affdad69455": {
+      "last_matched_stop_sequence": 4
+    },
+    "VJ0205bff42e60cf34ff394d5e0a4a62233bd822a2": {
+      "last_matched_stop_sequence": 6
+    }
+  },
+  "vehicles": {
+    "YX74OJE": {
+      "lat": 53.46285629272461,
+      "lon": -2.2778120040893555,
+      "timestamp": 1786890454
+    },
+    "YX74OJJ": {
+      "lat": 53.43077850341797,
+      "lon": -2.319581985473633,
+      "timestamp": 1786890453
+    },
+    "YX74OJT": {
+      "lat": 53.468265533447266,
+      "lon": -2.2363409996032715,
+      "timestamp": 1786890458
+    },
+    "YX74OKA": {
+      "lat": 53.424869537353516,
+      "lon": -2.325974941253662,
+      "timestamp": 1786889847
+    }
+  }
+}

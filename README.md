@@ -16,6 +16,10 @@ independent, freely available real-time sources for it (more on that
 below), and honestly it felt like a more interesting problem than another
 crypto price feed.
 
+**if youre a reviewer short on time:** `EVIDENCE.md` maps the real,
+six-cycle, ~50-minute demo run committed in `data/` and `reports/` -
+which cycle shows what, straight in.
+
 ---
 
 ## the two sources, for real
