@@ -52,6 +52,21 @@ def _schedule_window(trip_stops, last_matched_stop_sequence, matched_stop_id):
     ]
 
 
+def _split_by_freshness(vehicles, now):
+    # bods keeps a vehicle's last real position in the feed long after it
+    # stops actually reporting (see config.MAX_VEHICLE_POSITION_AGE_SECONDS)
+    # - splitting here means a stale echo never even reaches the matching
+    # engine, instead of getting quietly treated as a currently active bus
+    fresh, stale = [], []
+    for v in vehicles:
+        age = now.timestamp() - v["timestamp"]
+        if age <= config.MAX_VEHICLE_POSITION_AGE_SECONDS:
+            fresh.append(v)
+        else:
+            stale.append({"vehicle_id": v["vehicle_id"], "age_seconds": int(age)})
+    return fresh, stale
+
+
 def run_cycle():
     now = datetime.now(timezone.utc)
     today = now.strftime("%Y%m%d")
@@ -61,6 +76,7 @@ def run_cycle():
     calendar_dates = static_source.load_calendar_dates()
 
     vehicles = live_source.fetch_vehicle_positions()
+    vehicles, stale_ignored = _split_by_freshness(vehicles, now)
 
     obs_state = ObservationState()
     ledger = Ledger()
@@ -96,6 +112,7 @@ def run_cycle():
         "vehicles_checked": len(vehicle_reports),
         "vehicles": vehicle_reports,
         "cancellations": [{"trip_id": tid, "record": rec} for tid, rec in cancellations],
+        "stale_ignored": stale_ignored,
     }
     CYCLE_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
     with open(CYCLE_LOG_PATH, "a", encoding="utf-8") as f:
@@ -186,7 +203,8 @@ def print_report(summary, verbose=False):
     print(f" {summary['vehicles_checked']} bus{'es' if summary['vehicles_checked'] != 1 else ''} checked   "
           f"{len(suspects)} suspect   {flagged_count} flagged   "
           f"{withheld_count} frozen   {len(summary['cancellations'])} possible cancellation"
-          f"{'s' if len(summary['cancellations']) != 1 else ''}")
+          f"{'s' if len(summary['cancellations']) != 1 else ''}   "
+          f"{len(summary['stale_ignored'])} ignored (stale gps)")
 
     if not summary["vehicles"]:
         print("\n  no active buses matched to a known trip this cycle - try again during service hours")
@@ -225,6 +243,12 @@ def print_report(summary, verbose=False):
         _section(" POSSIBLE CANCELLATIONS  (scheduled, never seen live, past grace period)")
         for c in summary["cancellations"]:
             print(f"  {c['trip_id'][:16]}...   {c['record']['reason']}")
+
+    if summary["stale_ignored"]:
+        _section(" IGNORED  (gps position too old to count as live)")
+        for s in summary["stale_ignored"]:
+            mins = s["age_seconds"] // 60
+            print(f"  {s['vehicle_id']:<10} last real position {mins} min ago - not treated as an active bus this cycle")
 
     print()
     print(HR)

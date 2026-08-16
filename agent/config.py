@@ -172,6 +172,20 @@ CANCELLATION_GRACE_PERIOD_SECONDS = 1200  # 20 min
 # late. 20 min is well past the dft "on time" window (+6 min), so a trip
 # that still hasn't shown up by then is very likely not coming at all.
 
+# --- live feed freshness ----------------------------------------------------
+
+MAX_VEHICLE_POSITION_AGE_SECONDS = 600  # 10 min
+# real finding: bods's live feed doesnt drop a vehicle's entry when it
+# stops actually reporting - it just leaves the last real position sitting
+# there. checked directly in one snapshot: some vehicles were 11-21s old
+# (genuinely live right now) sitting right next to ones 10.7h and 13.5h
+# old (last night's positions, still present in "today's" feed). without
+# this filter a stale echo gets matched and reported like a currently
+# active bus, schedule window and all, from whatever trip it happened to
+# be on the last time it actually moved. 10 min is comfortably past the
+# real ~15 min poll cadence so it wont trip on a bus thats just between
+# polls, but it catches anything thats genuinely stopped reporting.
+
 CANCELLATION_MAX_LOOKBACK_SECONDS = 7200  # 2 hours
 # the other half of the window - dont check trips that started MORE than
 # 2h ago either. without this, a trip that ran and finished normally 12
